@@ -18,6 +18,8 @@ class StatsOverview extends BaseWidget
         return [
             Stat::make('Transactions', (string) $stats->transactionCount())
                 ->icon(Heroicon::OutlinedListBullet),
+            ...$this->statsPerCurrency('Total income', $stats->totalIncomeByCurrency(), Heroicon::OutlinedArrowTrendingUp, 'success'),
+            ...$this->statsPerCurrency('Total expenses', $stats->totalExpenseByCurrency(), Heroicon::OutlinedArrowTrendingDown, 'danger'),
             ...$this->statsPerCurrency('Average spend', $stats->averageSpendByCurrency(), Heroicon::OutlinedCalculator, 'danger'),
             ...$this->statsPerCurrency('ATM / cash withdrawals', $stats->atmWithdrawalTotalsByCurrency(), Heroicon::OutlinedBanknotes, 'warning'),
         ];

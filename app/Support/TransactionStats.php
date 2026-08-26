@@ -302,6 +302,42 @@ readonly class TransactionStats
     }
 
     /**
+     * Grouped per currency for the same reason as atmWithdrawalTotalsByCurrency():
+     * summing cents across currencies would be meaningless.
+     *
+     * @return array<string, int> currency_code => total cents
+     */
+    public function totalIncomeByCurrency(): array
+    {
+        return $this->baseQuery()
+            ->where('amount_cents', '>', 0)
+            ->groupBy('currency_code')
+            ->orderBy('currency_code')
+            ->selectRaw('currency_code, SUM(amount_cents) as total_cents')
+            ->pluck('total_cents', 'currency_code')
+            ->map(fn ($cents) => (int) $cents)
+            ->all();
+    }
+
+    /**
+     * Grouped per currency for the same reason as atmWithdrawalTotalsByCurrency():
+     * summing cents across currencies would be meaningless.
+     *
+     * @return array<string, int> currency_code => total cents
+     */
+    public function totalExpenseByCurrency(): array
+    {
+        return $this->baseQuery()
+            ->where('amount_cents', '<', 0)
+            ->groupBy('currency_code')
+            ->orderBy('currency_code')
+            ->selectRaw('currency_code, SUM(-amount_cents) as total_cents')
+            ->pluck('total_cents', 'currency_code')
+            ->map(fn ($cents) => (int) $cents)
+            ->all();
+    }
+
+    /**
      * Same place recurring across several distinct months with a roughly
      * stable amount - a cheap heuristic for subscriptions/regular bills,
      * not a precise match.
