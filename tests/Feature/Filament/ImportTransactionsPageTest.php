@@ -7,7 +7,6 @@ use App\Jobs\RaiffeisenLoginJob;
 use App\Models\Account;
 use App\Models\ImportCoverage;
 use App\Models\User;
-use App\Services\Raiffeisen\Data\AccountBalance;
 use App\Support\RaiffeisenImportSession;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Queue;
@@ -54,8 +53,17 @@ class ImportTransactionsPageTest extends TestCase
         RaiffeisenImportSession::setState($sessionId, [
             'status' => 'ready',
             'cookies' => ['foo' => 'bar'],
+            // Plain arrays, matching what RaiffeisenLoginJob actually stores
+            // (Laravel's cache stores refuse to unserialize arbitrary
+            // objects by default - see RaiffeisenLoginJob for details).
             'accounts' => [
-                new AccountBalance('11111', 'RSD account', 'RSD', '941', '33', 1000, 900, null, null),
+                [
+                    'number' => '11111',
+                    'description' => 'RSD account',
+                    'currency_code' => 'RSD',
+                    'currency_code_numeric' => '941',
+                    'product_core_id' => '33',
+                ],
             ],
         ]);
 

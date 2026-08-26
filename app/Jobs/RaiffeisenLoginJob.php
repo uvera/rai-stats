@@ -60,7 +60,17 @@ class RaiffeisenLoginJob implements ShouldQueue
             RaiffeisenImportSession::setState($this->importSessionId, [
                 'status' => 'ready',
                 'cookies' => $client->exportCookies(),
-                'accounts' => $accounts,
+                // Plain arrays, not AccountBalance DTOs: Laravel's cache
+                // stores unserialize with allowed_classes=false by default
+                // (config/cache.php serializable_classes), which silently
+                // turns any cached object into __PHP_Incomplete_Class.
+                'accounts' => array_map(fn ($a) => [
+                    'number' => $a->number,
+                    'description' => $a->description,
+                    'currency_code' => $a->currencyCode,
+                    'currency_code_numeric' => $a->currencyCodeNumeric,
+                    'product_core_id' => $a->productCoreId,
+                ], $accounts),
             ]);
         } catch (Throwable $e) {
             RaiffeisenImportSession::setState($this->importSessionId, [

@@ -9,7 +9,6 @@ use GuzzleHttp\Client;
 use GuzzleHttp\Handler\MockHandler;
 use GuzzleHttp\HandlerStack;
 use GuzzleHttp\Psr7\Response;
-use GuzzleHttp\Psr7\Utils;
 use Tests\TestCase;
 
 class RaiffeisenClientTest extends TestCase
@@ -21,6 +20,20 @@ class RaiffeisenClientTest extends TestCase
         $http = new Client(['handler' => $handlerStack]);
 
         return [new RaiffeisenClient(http: $http), $mock];
+    }
+
+    /**
+     * The SSE /connect call bypasses Guzzle entirely (see RawSseStream) - so
+     * the push-flow tests mock it separately via the injectable stream
+     * factory instead of a Guzzle response.
+     */
+    private function clientForPushFlow(array $guzzleResponses, string $sseBody): RaiffeisenClient
+    {
+        $mock = new MockHandler($guzzleResponses);
+        $http = new Client(['handler' => HandlerStack::create($mock)]);
+        $fakeStream = new FakeSseStream($sseBody);
+
+        return new RaiffeisenClient(http: $http, sseStreamFactory: fn () => $fakeStream);
     }
 
     public function test_login_font_without_2fa(): void
@@ -192,12 +205,11 @@ class RaiffeisenClientTest extends TestCase
             ])."\n",
         ]);
 
-        [$client] = $this->clientWithMockedResponses([
+        $client = $this->clientForPushFlow([
             new Response(200, [], json_encode(['ConnectionToken' => 'conn-token', 'ConnectionId' => 'id', 'ProtocolVersion' => '2.1'])),
-            new Response(200, ['Content-Type' => 'text/event-stream'], Utils::streamFor($sseBody)),
             new Response(200, [], ''),
             new Response(200, [], ''),
-        ]);
+        ], $sseBody);
 
         $result = $client->requestLoginPush('ticket-123', 'testuser', timeoutSeconds: 5);
 
@@ -224,16 +236,48 @@ class RaiffeisenClientTest extends TestCase
             ])."\n",
         ]);
 
-        [$client] = $this->clientWithMockedResponses([
+        $client = $this->clientForPushFlow([
             new Response(200, [], json_encode(['ConnectionToken' => 'conn-token'])),
-            new Response(200, ['Content-Type' => 'text/event-stream'], Utils::streamFor($sseBody)),
             new Response(200, [], ''),
             new Response(200, [], ''),
-        ]);
+        ], $sseBody);
 
         $this->expectException(RaiffeisenException::class);
         $this->expectExceptionMessage('Login push REJECTED');
 
         $client->requestLoginPush('ticket-123', 'testuser', timeoutSeconds: 5);
+    }
+}
+
+/**
+ * Duck-types RawSseStream's public surface (read/eof/statusCode/
+ * responseHeaders/setCookieHeaders) without opening a real socket.
+ */
+class FakeSseStream
+{
+    public int $statusCode = 200;
+
+    public array $responseHeaders = [];
+
+    public array $setCookieHeaders = [];
+
+    private string $buffer;
+
+    public function __construct(string $body)
+    {
+        $this->buffer = $body;
+    }
+
+    public function read(int $length): string
+    {
+        $chunk = substr($this->buffer, 0, $length);
+        $this->buffer = substr($this->buffer, strlen($chunk));
+
+        return $chunk;
+    }
+
+    public function eof(): bool
+    {
+        return $this->buffer === '';
     }
 }

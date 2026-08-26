@@ -4,7 +4,6 @@ namespace App\Filament\Pages;
 
 use App\Jobs\RaiffeisenLoginJob;
 use App\Models\Account;
-use App\Services\Raiffeisen\Data\AccountBalance;
 use App\Services\Raiffeisen\RaiffeisenClient;
 use App\Services\Raiffeisen\TransactionImporter;
 use App\Support\DateRange;
@@ -104,26 +103,28 @@ class ImportTransactions extends Page
         }
 
         if ($state['status'] === 'ready') {
-            /** @var AccountBalance[] $fetchedAccounts */
+            // Plain arrays, not AccountBalance DTOs - see RaiffeisenLoginJob
+            // for why (Laravel's cache stores refuse to unserialize
+            // arbitrary objects by default).
             $fetchedAccounts = $state['accounts'];
 
             foreach ($fetchedAccounts as $account) {
                 Account::firstOrCreate(
-                    ['number' => $account->number],
+                    ['number' => $account['number']],
                     [
                         'user_id' => auth()->id(),
-                        'description' => $account->description,
-                        'currency_code' => $account->currencyCode,
-                        'currency_code_numeric' => $account->currencyCodeNumeric,
-                        'product_core_id' => $account->productCoreId,
+                        'description' => $account['description'],
+                        'currency_code' => $account['currency_code'],
+                        'currency_code_numeric' => $account['currency_code_numeric'],
+                        'product_core_id' => $account['product_core_id'],
                     ]
                 );
             }
 
-            $this->accounts = array_map(fn (AccountBalance $a) => [
-                'number' => $a->number,
-                'description' => $a->description,
-                'currency_code' => $a->currencyCode,
+            $this->accounts = array_map(fn (array $a) => [
+                'number' => $a['number'],
+                'description' => $a['description'],
+                'currency_code' => $a['currency_code'],
             ], $fetchedAccounts);
 
             $this->selectedAccountNumber = $this->accounts[0]['number'] ?? null;

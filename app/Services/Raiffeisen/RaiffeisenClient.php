@@ -9,6 +9,8 @@ use App\Services\Raiffeisen\Data\ReservedTransaction;
 use App\Services\Raiffeisen\Data\Transaction;
 use GuzzleHttp\Client;
 use GuzzleHttp\Cookie\CookieJar;
+use GuzzleHttp\Cookie\SetCookie;
+use GuzzleHttp\Psr7\Request as Psr7Request;
 use Illuminate\Support\Facades\Log;
 
 /**
@@ -39,28 +41,22 @@ class RaiffeisenClient
 
     private CookieJar $cookieJar;
 
+    /** @var callable(string, string, array, string): RawSseStream */
+    private $sseStreamFactory;
+
     public function __construct(
         private readonly Argon2iHasher $hasher = new Argon2iHasher,
         ?Client $http = null,
         ?CookieJar $cookieJar = null,
+        ?callable $sseStreamFactory = null,
     ) {
         $this->cookieJar = $cookieJar ?? new CookieJar;
         $this->http = $http ?? new Client([
             'cookies' => $this->cookieJar,
             'headers' => ['User-Agent' => self::USER_AGENT],
             'http_errors' => false,
-            // Guzzle's default 'decode_content' sends "Accept-Encoding: gzip"
-            // and transparently decompresses. cURL's gzip decoder buffers
-            // until it has enough compressed input to produce output, which
-            // silently defeats true incremental reads on the SignalR SSE
-            // connect stream (no bytes surface until the buffer fills or the
-            // connection closes) - the exact hang observed against the real
-            // bank. Go's client never hit this: its gzip.Reader decompresses
-            // incrementally. Disabling this is safe; every response here is
-            // small plain JSON or an SSE text stream, nothing worth
-            // compressing anyway.
-            'decode_content' => false,
         ]);
+        $this->sseStreamFactory = $sseStreamFactory ?? fn (string $host, string $path, array $headers, string $cookieHeader) => new RawSseStream($host, $path, $headers, $cookieHeader);
     }
 
     /**
@@ -372,9 +368,15 @@ class RaiffeisenClient
         return $token;
     }
 
+    /**
+     * Deliberately bypasses Guzzle here - see RawSseStream's docblock for
+     * why. Every other call in this client goes through Guzzle as normal;
+     * only this one long-lived SSE connection needs the raw socket.
+     */
     private function signalRConnectStream(string $token)
     {
-        $url = self::SIGNALR_BASE_URL.'/connect?'.http_build_query([
+        $host = parse_url(self::ORIGIN, PHP_URL_HOST);
+        $path = '/Retail/signalr/connect?'.http_build_query([
             'transport' => 'serverSentEvents',
             'clientProtocol' => self::SIGNALR_PROTOCOL,
             'connectionToken' => $token,
@@ -382,27 +384,41 @@ class RaiffeisenClient
             'tid' => random_int(0, 9),
         ]);
 
-        $response = $this->http->get($url, [
-            'headers' => [
+        $dummyRequest = $this->cookieJar->withCookieHeader(new Psr7Request('GET', self::ORIGIN.$path));
+
+        $stream = ($this->sseStreamFactory)(
+            $host,
+            $path,
+            [
+                'User-Agent' => self::USER_AGENT,
                 'Accept' => 'text/event-stream',
                 'Cache-Control' => 'no-cache',
                 'Origin' => self::ORIGIN,
                 'Referer' => self::REFERER,
             ],
-            'stream' => true,
-            'read_timeout' => 200,
-        ]);
+            $dummyRequest->getHeaderLine('Cookie'),
+        );
 
         Log::debug('raiffeisen.signalr.connect.response', [
-            'status' => $response->getStatusCode(),
-            'headers' => $response->getHeaders(),
+            'status' => $stream->statusCode,
+            'headers' => $stream->responseHeaders,
         ]);
 
-        if ($response->getStatusCode() !== 200) {
-            throw new RaiffeisenException("connect status {$response->getStatusCode()}: {$response->getBody()}");
+        if ($stream->statusCode !== 200) {
+            throw new RaiffeisenException("connect status {$stream->statusCode}");
         }
 
-        return $response->getBody();
+        // Feed any cookies this connection set back into the shared jar so
+        // the subsequent Guzzle-based start/send calls carry them too.
+        foreach ($stream->setCookieHeaders as $rawSetCookie) {
+            $cookie = SetCookie::fromString($rawSetCookie);
+            if ($cookie->getDomain() === null) {
+                $cookie->setDomain($host);
+            }
+            $this->cookieJar->setCookie($cookie);
+        }
+
+        return $stream;
     }
 
     private function signalRStart(string $token)
