@@ -6,7 +6,7 @@
                 used only for this import and is never stored.
             </x-slot>
 
-            <form wire:submit="submitCredentials" class="max-w-md space-y-4">
+            <form wire:submit="submitCredentials" class="max-w-md space-y-6">
                 {{ $this->credentialsForm }}
 
                 <x-filament::button type="submit">Log in</x-filament::button>
