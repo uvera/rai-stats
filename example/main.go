@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
+	"log/slog"
 	"os"
 	"slices"
 	"strings"
@@ -20,6 +21,7 @@ var (
 	password string
 	from     string
 	to       string
+	debug    bool
 )
 
 func main() {
@@ -28,7 +30,12 @@ func main() {
 	flag.StringVar(&password, "password", "", "Password")
 	flag.StringVar(&from, "from", "", "From date")
 	flag.StringVar(&to, "to", "", "To date")
+	flag.BoolVar(&debug, "debug", false, "Log raw transaction amounts as parsed, to stderr")
 	flag.Parse()
+
+	if debug {
+		slog.SetDefault(slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelDebug})))
+	}
 
 	reader := bufio.NewReader(os.Stdin)
 

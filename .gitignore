@@ -35,3 +35,4 @@ go.work.sum
 accounts.json
 transactions_*.json
 transactions.json
+debug.log

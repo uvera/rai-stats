@@ -431,6 +431,14 @@ func (c *client) signalRSend(ctx context.Context, token, ticket, username string
 	return nil
 }
 
+func indexedRow(row []string) string {
+	parts := make([]string, len(row))
+	for i, v := range row {
+		parts[i] = fmt.Sprintf("%d=%q", i, v)
+	}
+	return strings.Join(parts, " ")
+}
+
 func bomRemover(reader io.Reader) io.Reader {
 	transformer := unicode.BOMOverride(encoding.Nop.NewDecoder())
 	return transform.NewReader(reader, transformer)
@@ -568,16 +576,22 @@ func (c *client) AllAccountBalance() ([]*AccountBalance, error) {
 		}
 		accounts[i].TotalAmount = totalAmount
 
+		// Bank omits the last-transaction fields for some accounts (e.g. low-activity
+		// foreign currency accounts); an empty value there is not an error.
+		if account[6] == "" {
+			continue
+		}
+
 		lastTransactionAmount, err := decimal.NewFromString(account[6])
 		if err != nil {
-			c.logger.Error("Cannot parse last transaction amount!", "err", err)
+			c.logger.Error("Cannot parse last transaction amount!", "err", err, "raw_row", indexedRow(account))
 			continue
 		}
 		accounts[i].LastTransactionAmount = lastTransactionAmount
 
 		d, err := time.Parse("02.01.2006 15:04:05", account[7])
 		if err != nil {
-			c.logger.Error("Cannot parse last transaction date!", "err", err)
+			c.logger.Error("Cannot parse last transaction date!", "err", err, "raw_row", indexedRow(account))
 			continue
 		}
 		accounts[i].LastTransactionDate = d
@@ -648,14 +662,17 @@ func (c *client) TransactionalAccountTurnover(productCoreID string, accountNumbe
 			Type:                TransactionType(transaction.([]any)[13].(string)),
 		}
 
-		creditAmount, err := decimal.NewFromString(transaction.([]any)[8].(string))
+		rawCredit := transaction.([]any)[8].(string)
+		rawDebit := transaction.([]any)[9].(string)
+
+		creditAmount, err := decimal.NewFromString(rawCredit)
 		if err != nil {
-			c.logger.Error("Cannot parse credit amount for transaction", "err", err)
+			c.logger.Error("Cannot parse credit amount for transaction", "err", err, "raw_credit", rawCredit)
 			continue
 		}
-		debigAmount, err := decimal.NewFromString(transaction.([]any)[9].(string))
+		debigAmount, err := decimal.NewFromString(rawDebit)
 		if err != nil {
-			c.logger.Error("Cannot parse debit amount for transaction", "err", err)
+			c.logger.Error("Cannot parse debit amount for transaction", "err", err, "raw_debit", rawDebit)
 			continue
 		}
 
@@ -665,6 +682,14 @@ func (c *client) TransactionalAccountTurnover(productCoreID string, accountNumbe
 		if !debigAmount.IsZero() {
 			transactions[i].Amount = debigAmount
 		}
+
+		c.logger.Debug("parsed transaction amount",
+			"place", transactions[i].Place,
+			"raw_credit", rawCredit,
+			"raw_debit", rawDebit,
+			"parsed_amount", transactions[i].Amount.String(),
+			"raw_row", transaction,
+		)
 
 		d, err := time.Parse("02.01.2006 15:04:05", transaction.([]any)[3].(string))
 		if err != nil {
