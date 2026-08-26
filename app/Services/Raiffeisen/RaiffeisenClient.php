@@ -101,7 +101,15 @@ class RaiffeisenClient
             throw new RaiffeisenException("Unexpected LoginFont status {$response->getStatusCode()}: {$response->getBody()}");
         }
 
-        return LoginResult::fromArray($this->decodeJson($response->getBody()->getContents()));
+        $data = $this->decodeJson($response->getBody()->getContents());
+
+        if (empty($data['Ticket'])) {
+            throw new RaiffeisenException(
+                $data['ErrorMessage'] ?? $data['Message'] ?? 'Login failed - check your username and password.'
+            );
+        }
+
+        return LoginResult::fromArray($data);
     }
 
     /**
