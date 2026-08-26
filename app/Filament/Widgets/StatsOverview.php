@@ -18,12 +18,29 @@ class StatsOverview extends BaseWidget
         return [
             Stat::make('Transactions', (string) $stats->transactionCount())
                 ->icon(Heroicon::OutlinedListBullet),
-            Stat::make('Average spend', number_format($stats->averageSpendCents() / 100, 2))
-                ->icon(Heroicon::OutlinedCalculator)
-                ->color('danger'),
-            Stat::make('ATM / cash withdrawals', number_format($stats->atmWithdrawalTotalCents() / 100, 2))
-                ->icon(Heroicon::OutlinedBanknotes)
-                ->color('warning'),
+            ...$this->statsPerCurrency('Average spend', $stats->averageSpendByCurrency(), Heroicon::OutlinedCalculator, 'danger'),
+            ...$this->statsPerCurrency('ATM / cash withdrawals', $stats->atmWithdrawalTotalsByCurrency(), Heroicon::OutlinedBanknotes, 'warning'),
         ];
+    }
+
+    /**
+     * One Stat per currency present in $totals, e.g. two rows for an
+     * account holder with both EUR and RSD accounts. Currencies are sorted
+     * alphabetically for a stable display order.
+     *
+     * @param  array<string, int>  $totalsByCurrency  currency_code => cents
+     * @return array<int, Stat>
+     */
+    private function statsPerCurrency(string $label, array $totalsByCurrency, Heroicon $icon, string $color): array
+    {
+        ksort($totalsByCurrency);
+
+        return collect($totalsByCurrency)
+            ->map(fn (int $cents, string $currencyCode) => Stat::make(
+                "{$label} ({$currencyCode})",
+                number_format($cents / 100, 2),
+            )->icon($icon)->color($color))
+            ->values()
+            ->all();
     }
 }

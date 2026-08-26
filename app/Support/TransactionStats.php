@@ -234,10 +234,16 @@ readonly class TransactionStats
      * they come through as type=Other with a telltale place/description.
      * Flagged separately because money leaves the account untracked once
      * it's cash in hand.
+     *
+     * Grouped per currency rather than summed into one total: accounts can
+     * hold different currencies (e.g. EUR and RSD), and cents from one
+     * currency aren't comparable to cents from another.
+     *
+     * @return array<string, int> currency_code => total cents
      */
-    public function atmWithdrawalTotalCents(): int
+    public function atmWithdrawalTotalsByCurrency(): array
     {
-        return (int) $this->baseQuery()
+        return $this->baseQuery()
             ->where('type', TransactionType::Other)
             ->where(fn (Builder $q) => $q
                 ->where('place', 'ilike', '%bankomat%')
@@ -245,7 +251,12 @@ readonly class TransactionStats
                 ->orWhere('description', 'ilike', '%atm%')
                 ->orWhere('description', 'ilike', '%withdrawal%'))
             ->where('amount_cents', '<', 0)
-            ->sum(DB::raw('-amount_cents'));
+            ->groupBy('currency_code')
+            ->orderBy('currency_code')
+            ->selectRaw('currency_code, SUM(-amount_cents) as total_cents')
+            ->pluck('total_cents', 'currency_code')
+            ->map(fn ($cents) => (int) $cents)
+            ->all();
     }
 
     /**
@@ -261,11 +272,22 @@ readonly class TransactionStats
             ->all();
     }
 
-    public function averageSpendCents(): int
+    /**
+     * Grouped per currency for the same reason as atmWithdrawalTotalsByCurrency():
+     * averaging cents across currencies would be meaningless.
+     *
+     * @return array<string, int> currency_code => average cents
+     */
+    public function averageSpendByCurrency(): array
     {
-        return (int) $this->baseQuery()
+        return $this->baseQuery()
             ->where('amount_cents', '<', 0)
-            ->avg(DB::raw('-amount_cents'));
+            ->groupBy('currency_code')
+            ->orderBy('currency_code')
+            ->selectRaw('currency_code, AVG(-amount_cents) as average_cents')
+            ->pluck('average_cents', 'currency_code')
+            ->map(fn ($cents) => (int) round($cents))
+            ->all();
     }
 
     public function transactionCount(): int

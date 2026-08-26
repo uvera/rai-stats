@@ -88,7 +88,26 @@ class TransactionStatsTest extends TestCase
             'place' => 'Random Shop', 'description' => 'Groceries', 'type' => TransactionType::Pos, 'amount_cents' => -3000,
         ]);
 
-        $this->assertSame(20000, $this->stats($user->id)->atmWithdrawalTotalCents());
+        $this->assertSame(['RSD' => 20000], $this->stats($user->id)->atmWithdrawalTotalsByCurrency());
+    }
+
+    public function test_atm_withdrawal_totals_are_grouped_by_currency(): void
+    {
+        $user = User::factory()->create();
+        $rsdAccount = Account::factory()->for($user)->create(['currency_code' => 'RSD']);
+        $eurAccount = Account::factory()->for($user)->create(['currency_code' => 'EUR']);
+
+        Transaction::factory()->for($rsdAccount)->for($user)->create([
+            'place' => 'bankomat', 'type' => TransactionType::Other, 'amount_cents' => -20000, 'currency_code' => 'RSD',
+        ]);
+        Transaction::factory()->for($eurAccount)->for($user)->create([
+            'place' => 'ATM', 'type' => TransactionType::Other, 'amount_cents' => -5000, 'currency_code' => 'EUR',
+        ]);
+
+        $this->assertSame(
+            ['EUR' => 5000, 'RSD' => 20000],
+            $this->stats($user->id)->atmWithdrawalTotalsByCurrency(),
+        );
     }
 
     public function test_largest_transactions_orders_by_absolute_amount(): void
@@ -114,7 +133,23 @@ class TransactionStatsTest extends TestCase
         Transaction::factory()->for($account)->for($user)->create(['amount_cents' => -3000]);
         Transaction::factory()->for($account)->for($user)->create(['amount_cents' => 100000]);
 
-        $this->assertSame(2000, $this->stats($user->id)->averageSpendCents());
+        $this->assertSame(['RSD' => 2000], $this->stats($user->id)->averageSpendByCurrency());
+    }
+
+    public function test_average_spend_is_grouped_by_currency(): void
+    {
+        $user = User::factory()->create();
+        $rsdAccount = Account::factory()->for($user)->create(['currency_code' => 'RSD']);
+        $eurAccount = Account::factory()->for($user)->create(['currency_code' => 'EUR']);
+
+        Transaction::factory()->for($rsdAccount)->for($user)->create(['amount_cents' => -1000, 'currency_code' => 'RSD']);
+        Transaction::factory()->for($rsdAccount)->for($user)->create(['amount_cents' => -3000, 'currency_code' => 'RSD']);
+        Transaction::factory()->for($eurAccount)->for($user)->create(['amount_cents' => -100, 'currency_code' => 'EUR']);
+
+        $this->assertSame(
+            ['EUR' => 100, 'RSD' => 2000],
+            $this->stats($user->id)->averageSpendByCurrency(),
+        );
     }
 
     public function test_recurring_charges_requires_several_months_of_a_stable_amount(): void
