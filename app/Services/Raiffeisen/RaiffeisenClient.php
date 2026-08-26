@@ -49,6 +49,17 @@ class RaiffeisenClient
             'cookies' => $this->cookieJar,
             'headers' => ['User-Agent' => self::USER_AGENT],
             'http_errors' => false,
+            // Guzzle's default 'decode_content' sends "Accept-Encoding: gzip"
+            // and transparently decompresses. cURL's gzip decoder buffers
+            // until it has enough compressed input to produce output, which
+            // silently defeats true incremental reads on the SignalR SSE
+            // connect stream (no bytes surface until the buffer fills or the
+            // connection closes) - the exact hang observed against the real
+            // bank. Go's client never hit this: its gzip.Reader decompresses
+            // incrementally. Disabling this is safe; every response here is
+            // small plain JSON or an SSE text stream, nothing worth
+            // compressing anyway.
+            'decode_content' => false,
         ]);
     }
 
