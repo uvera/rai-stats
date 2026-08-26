@@ -1,20 +1,26 @@
-# Golang Raiffeisen Retail API client
+# rai-stats
 
-Allows to export transactions from all accounts for Serbian branch of Raiffeisen Bank.
-It could probably work for another branches, but I tested it only with Serbian retail account.
-Feel free to contibute.
+A self-hosted family finance app for Raiffeisen Bank Serbia accounts.
 
-## How to use
+Each family member logs in, imports their own transactions from Raiffeisen's
+retail internet banking (RaiOnline), and everyone can browse spending stats —
+per account, per person, or across the whole household.
 
-See an [example](/example/main.go). It will create `.json` files with transactions which are ready to be imported into
-[Actual Budget](https://actualbudget.org) using [this script](/example/index.mjs).
+## Stack
 
-```bash
-go build -o ./exporter ./example/main.go
-./exporter -username YOUR_USERNAME -password YOUR_PASSWORD -from 01.01.2024 # optionally use -to 
-```
+- Laravel + Filament v5
+- PostgreSQL
+- [DDEV](https://ddev.com) for local development
 
-```bash
-mv transactions_RSD_XXXXXXXXXXXXXXXXX.json transactions.json
-node ./example/index.mjs
-```
+## Status
+
+Early build, in progress via the [Hedgehog](https://github.com/skyf0xx/hedgehog)
+build discipline.
+
+## Note on the previous version of this repo
+
+Earlier commits in this repo's history contain a Go CLI
+([originally forked from savely-krasovsky/raiffeisen-retail-api](https://github.com/savely-krasovsky/raiffeisen-retail-api))
+that was used to manually export transactions to JSON for ad-hoc analysis.
+That logic has been ported natively into this app's import wizard; the
+standalone CLI is no longer maintained here.
