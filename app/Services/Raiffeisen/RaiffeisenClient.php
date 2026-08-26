@@ -36,15 +36,36 @@ class RaiffeisenClient
 
     private Client $http;
 
+    private CookieJar $cookieJar;
+
     public function __construct(
         private readonly Argon2iHasher $hasher = new Argon2iHasher,
         ?Client $http = null,
+        ?CookieJar $cookieJar = null,
     ) {
+        $this->cookieJar = $cookieJar ?? new CookieJar;
         $this->http = $http ?? new Client([
-            'cookies' => new CookieJar,
+            'cookies' => $this->cookieJar,
             'headers' => ['User-Agent' => self::USER_AGENT],
             'http_errors' => false,
         ]);
+    }
+
+    /**
+     * Restores a previously authenticated session (see exportCookies()) so a
+     * later request can reuse the login without repeating the 2FA flow.
+     */
+    public static function withCookies(array $cookieData): self
+    {
+        return new self(cookieJar: new CookieJar(false, $cookieData));
+    }
+
+    /**
+     * @return array Serializable cookie data, restorable via withCookies().
+     */
+    public function exportCookies(): array
+    {
+        return $this->cookieJar->toArray();
     }
 
     public function login(): void
