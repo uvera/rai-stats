@@ -77,15 +77,16 @@ abstract class AbstractStatsPage extends Page
     }
 
     /**
-     * Rendered in the Blade view as `{{ $this->dateFilters }}` - Filament's
-     * non-native date pickers bound directly to $this->filters['from'] and
-     * $this->filters['to'], instead of plain HTML <input type="date">.
+     * Rendered in the Blade view as `{{ $this->filtersForm }}` - the whole
+     * filter bar (date range, period, accounts) as one Filament schema, so
+     * every field gets the same label style and spacing instead of being
+     * hand-assembled from a mix of Filament components and raw HTML.
      */
-    public function dateFilters(Schema $schema): Schema
+    public function filtersForm(Schema $schema): Schema
     {
         return $schema
             ->statePath('filters')
-            ->columns(2)
+            ->columns(4)
             ->components([
                 DatePicker::make('from')
                     ->label('From')
@@ -95,19 +96,14 @@ abstract class AbstractStatsPage extends Page
                     ->label('To')
                     ->native(false)
                     ->live(),
-            ]);
-    }
-
-    /**
-     * Rendered in the Blade view as `{{ $this->accountsFilter }}` - a real
-     * Filament multi-select (tags/search UI) bound directly to
-     * $this->filters['accountIds'], instead of a plain HTML <select multiple>.
-     */
-    public function accountsFilter(Schema $schema): Schema
-    {
-        return $schema
-            ->statePath('filters')
-            ->components([
+                Select::make('period')
+                    ->label('Period')
+                    ->options([
+                        'month' => 'Month',
+                        'quarter' => 'Quarter',
+                        'year' => 'Year',
+                    ])
+                    ->live(),
                 Select::make('accountIds')
                     ->label('Accounts')
                     ->multiple()
