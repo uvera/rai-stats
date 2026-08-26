@@ -9,7 +9,7 @@
                 Copy this token now - it won't be shown again.
             </p>
 
-            <x-filament::input.wrapper class="mt-2">
+            <x-filament::input.wrapper style="margin-top: 0.5rem;">
                 <x-filament::input
                     type="text"
                     readonly
@@ -18,7 +18,7 @@
                 />
             </x-filament::input.wrapper>
 
-            <x-filament::button color="gray" class="mt-3" wire:click="dismissPlainTextToken">
+            <x-filament::button color="gray" style="margin-top: 1rem;" wire:click="dismissPlainTextToken">
                 Done
             </x-filament::button>
         </x-filament::section>
