@@ -3,6 +3,7 @@
 namespace App\Support;
 
 use DateTimeImmutable;
+use DateTimeInterface;
 use InvalidArgumentException;
 
 /**
@@ -15,10 +16,10 @@ readonly class DateRange
 
     public DateTimeImmutable $to;
 
-    public function __construct(DateTimeImmutable $from, DateTimeImmutable $to)
+    public function __construct(DateTimeInterface $from, DateTimeInterface $to)
     {
-        $from = $from->setTime(0, 0);
-        $to = $to->setTime(0, 0);
+        $from = DateTimeImmutable::createFromInterface($from)->setTime(0, 0);
+        $to = DateTimeImmutable::createFromInterface($to)->setTime(0, 0);
 
         if ($from > $to) {
             throw new InvalidArgumentException('DateRange "from" must not be after "to"');

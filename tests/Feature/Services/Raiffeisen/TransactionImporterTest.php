@@ -1,0 +1,154 @@
+<?php
+
+namespace Tests\Feature\Services\Raiffeisen;
+
+use App\Enums\TransactionType;
+use App\Models\Account;
+use App\Models\Transaction as TransactionModel;
+use App\Models\User;
+use App\Services\Raiffeisen\Data\ReservedTransaction;
+use App\Services\Raiffeisen\Data\Transaction;
+use App\Services\Raiffeisen\Data\TransactionType as RaiffeisenTransactionType;
+use App\Services\Raiffeisen\TransactionImporter;
+use App\Support\DateRange;
+use DateTimeImmutable;
+use Illuminate\Foundation\Testing\RefreshDatabase;
+use Tests\TestCase;
+
+class TransactionImporterTest extends TestCase
+{
+    use RefreshDatabase;
+
+    private function makeAccount(): Account
+    {
+        $user = User::factory()->create();
+
+        return Account::create([
+            'user_id' => $user->id,
+            'number' => '265000000000000000',
+            'description' => 'Test account',
+            'currency_code' => 'RSD',
+            'currency_code_numeric' => '941',
+            'product_core_id' => '33',
+        ]);
+    }
+
+    private function transactionDto(string $bankId, int $amountCents, string $place = 'Test Place'): Transaction
+    {
+        return new Transaction(
+            currencyCodeNumeric: '941',
+            currencyCode: 'RSD',
+            date: new DateTimeImmutable('2026-01-15 10:00:00'),
+            place: $place,
+            reference: 'ref-1',
+            amountCents: $amountCents,
+            description: 'desc',
+            bankTransactionId: $bankId,
+            type: RaiffeisenTransactionType::Pos,
+        );
+    }
+
+    public function test_imports_transactions(): void
+    {
+        $account = $this->makeAccount();
+        $importer = new TransactionImporter;
+
+        $inserted = $importer->importTurnover($account, $account->user_id, [
+            $this->transactionDto('bank-id-1', -2000000),
+            $this->transactionDto('bank-id-2', 13975000),
+        ]);
+
+        $this->assertSame(2, $inserted);
+        $this->assertDatabaseCount('transactions', 2);
+        $this->assertDatabaseHas('transactions', ['bank_transaction_id' => 'bank-id-1', 'amount_cents' => -2000000]);
+    }
+
+    public function test_reimporting_the_same_transactions_does_not_duplicate(): void
+    {
+        $account = $this->makeAccount();
+        $importer = new TransactionImporter;
+
+        $transactions = [
+            $this->transactionDto('bank-id-1', -2000000),
+            $this->transactionDto('bank-id-2', 13975000),
+        ];
+
+        $importer->importTurnover($account, $account->user_id, $transactions);
+        $secondRunInserted = $importer->importTurnover($account, $account->user_id, $transactions);
+
+        $this->assertSame(0, $secondRunInserted);
+        $this->assertDatabaseCount('transactions', 2);
+    }
+
+    public function test_transactions_without_a_bank_id_dedupe_on_a_content_hash(): void
+    {
+        $account = $this->makeAccount();
+        $importer = new TransactionImporter;
+
+        $noIdTransaction = new Transaction(
+            currencyCodeNumeric: '941',
+            currencyCode: 'RSD',
+            date: new DateTimeImmutable('2026-01-15 10:00:00'),
+            place: 'Some Place',
+            reference: '',
+            amountCents: -1000,
+            description: '',
+            bankTransactionId: '',
+            type: RaiffeisenTransactionType::Other,
+        );
+
+        $importer->importTurnover($account, $account->user_id, [$noIdTransaction]);
+        $secondRunInserted = $importer->importTurnover($account, $account->user_id, [$noIdTransaction]);
+
+        $this->assertSame(0, $secondRunInserted);
+        $this->assertDatabaseCount('transactions', 1);
+    }
+
+    public function test_imports_reserved_funds_tagged_as_reserved(): void
+    {
+        $account = $this->makeAccount();
+        $importer = new TransactionImporter;
+
+        $reserved = new ReservedTransaction(
+            date: new DateTimeImmutable('2026-01-15 10:00:00'),
+            place: 'Pending POS',
+            amountCents: -5000,
+            currencyCode: 'RSD',
+            currencyCodeNumeric: '941',
+        );
+
+        $inserted = $importer->importReserved($account, $account->user_id, [$reserved]);
+
+        $this->assertSame(1, $inserted);
+        $this->assertDatabaseHas('transactions', ['type' => TransactionType::Reserved->value]);
+    }
+
+    public function test_reserved_transactions_are_excluded_from_the_default_stats_scope(): void
+    {
+        $account = $this->makeAccount();
+        $importer = new TransactionImporter;
+
+        $importer->importTurnover($account, $account->user_id, [$this->transactionDto('bank-id-1', -1000)]);
+        $importer->importReserved($account, $account->user_id, [
+            new ReservedTransaction(new DateTimeImmutable('2026-01-15'), 'Pending', -500, 'RSD', '941'),
+        ]);
+
+        $this->assertSame(1, TransactionModel::excludingReserved()->count());
+        $this->assertSame(2, TransactionModel::count());
+    }
+
+    public function test_record_coverage_merges_with_existing_ranges(): void
+    {
+        $account = $this->makeAccount();
+        $importer = new TransactionImporter;
+
+        $importer->recordCoverage($account, new DateRange(new DateTimeImmutable('2026-01-01'), new DateTimeImmutable('2026-01-10')));
+        $importer->recordCoverage($account, new DateRange(new DateTimeImmutable('2026-01-11'), new DateTimeImmutable('2026-01-20')));
+
+        $coverages = $account->importCoverages()->get();
+
+        $this->assertCount(1, $coverages);
+        $this->assertSame('2026-01-01', $coverages[0]->from_date->format('Y-m-d'));
+        $this->assertSame('2026-01-20', $coverages[0]->to_date->format('Y-m-d'));
+    }
+}
