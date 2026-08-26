@@ -3,13 +3,22 @@
 /public/build
 /public/hot
 /public/storage
+/public/fonts-manifest.dev.json
+
+# Filament published assets (regenerate with `php artisan filament:assets`)
+/public/css/filament
+/public/js/filament
+/public/fonts/filament
 /storage/*.key
 /storage/pail
 /vendor
+/.phpunit.cache
 .env
 .env.backup
 .env.production
 .phpunit.result.cache
+_ide_helper.php
+database/database.sqlite
 Homestead.json
 Homestead.yaml
 auth.json
