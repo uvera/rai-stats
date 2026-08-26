@@ -23,9 +23,26 @@ class TransactionFactory extends Factory
             'place' => $this->faker->company(),
             'reference' => $this->faker->uuid(),
             'description' => $this->faker->sentence(),
-            'type' => $this->faker->randomElement(TransactionType::cases()),
+            // Excludes Reserved: that's not a real Raiffeisen transaction
+            // type and every stats query excludes it, so picking it up here
+            // by chance would make tests relying on the default type flaky.
+            // Use the reserved() state explicitly where a reserved row is
+            // actually wanted.
+            'type' => $this->faker->randomElement([
+                TransactionType::Pos,
+                TransactionType::Other,
+                TransactionType::ExchBuy,
+                TransactionType::ExchSell,
+                TransactionType::Income,
+                TransactionType::IncomeCash,
+            ]),
             'bank_transaction_id' => $this->faker->unique()->uuid(),
             'dedup_key' => $this->faker->unique()->uuid(),
         ];
+    }
+
+    public function reserved(): static
+    {
+        return $this->state(['type' => TransactionType::Reserved]);
     }
 }
