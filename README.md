@@ -6,11 +6,44 @@ Each family member logs in, imports their own transactions from Raiffeisen's
 retail internet banking (RaiOnline), and everyone can browse spending stats —
 per account, per person, or across the whole household.
 
+## Features
+
+- **Import wizard** — logs into RaiOnline with a member's own credentials
+  (via push notification), pulls transactions for a chosen date range per
+  account, and stores them without ever persisting the bank password.
+- **My Stats / Family Stats** — Filament dashboards with an income/expense
+  chart, spend-per-account and spend-per-place breakdowns, a largest
+  transactions table, recurring charges detection, and a spender leaderboard.
+- **Transactions** — a searchable, filterable table of every imported
+  transaction, scoped to what the logged-in user is allowed to see.
+- **Users** — admin-managed accounts with `admin` / `user` roles.
+
 ## Stack
 
 - Laravel + Filament v5
 - PostgreSQL
 - [DDEV](https://ddev.com) for local development
+
+## Getting started
+
+```sh
+ddev start
+ddev composer install
+ddev artisan migrate
+ddev launch
+```
+
+Copy `.env.example` to `.env` first if DDEV hasn't already generated one for
+you, and run `ddev artisan key:generate` if `APP_KEY` is empty.
+
+## Running tests
+
+```sh
+ddev artisan test
+```
+
+Tests run against a real Postgres database (see `phpunit.xml`), not SQLite —
+there's no in-memory substitute configured.
 
 ## Status
 
