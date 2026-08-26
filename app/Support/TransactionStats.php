@@ -20,6 +20,7 @@ readonly class TransactionStats
 {
     /**
      * @param  int|null  $userId  Null = family scope (every user); an id = that user only.
+     * @param  array<int, int>|null  $accountIds  Null/empty = every account; otherwise restrict to these account ids.
      * @param  'month'|'quarter'|'year'  $period
      */
     public function __construct(
@@ -27,6 +28,7 @@ readonly class TransactionStats
         private CarbonImmutable $from,
         private CarbonImmutable $to,
         private string $period = 'month',
+        private ?array $accountIds = null,
     ) {}
 
     private function baseQuery(): Builder
@@ -37,7 +39,8 @@ readonly class TransactionStats
         return Transaction::query()
             ->excludingReserved()
             ->whereBetween('transactions.date', [$this->from->startOfDay(), $this->to->endOfDay()])
-            ->when($this->userId !== null, fn (Builder $q) => $q->where('transactions.user_id', $this->userId));
+            ->when($this->userId !== null, fn (Builder $q) => $q->where('transactions.user_id', $this->userId))
+            ->when(filled($this->accountIds), fn (Builder $q) => $q->whereIn('transactions.account_id', $this->accountIds));
     }
 
     public function formatPeriod(string $period): string
@@ -100,17 +103,9 @@ readonly class TransactionStats
     public function leaderboardQuery(): Builder
     {
         return User::query()
-            ->whereHas('transactions', fn (Builder $q) => $q
-                ->excludingReserved()
-                ->whereBetween('date', [$this->from->startOfDay(), $this->to->endOfDay()]))
-            ->withSum(['transactions as spend_cents' => fn (Builder $q) => $q
-                ->excludingReserved()
-                ->whereBetween('date', [$this->from->startOfDay(), $this->to->endOfDay()])
-                ->where('amount_cents', '<', 0)], DB::raw('-amount_cents'))
-            ->withSum(['transactions as income_cents' => fn (Builder $q) => $q
-                ->excludingReserved()
-                ->whereBetween('date', [$this->from->startOfDay(), $this->to->endOfDay()])
-                ->where('amount_cents', '>', 0)], 'amount_cents')
+            ->whereHas('transactions', fn (Builder $q) => $this->constrainTransactionsIgnoringUser($q))
+            ->withSum(['transactions as spend_cents' => fn (Builder $q) => $this->constrainTransactionsIgnoringUser($q)->where('amount_cents', '<', 0)], DB::raw('-amount_cents'))
+            ->withSum(['transactions as income_cents' => fn (Builder $q) => $this->constrainTransactionsIgnoringUser($q)->where('amount_cents', '>', 0)], 'amount_cents')
             ->orderByDesc('spend_cents');
     }
 
@@ -146,7 +141,21 @@ readonly class TransactionStats
         return $query
             ->excludingReserved()
             ->whereBetween('date', [$this->from->startOfDay(), $this->to->endOfDay()])
-            ->when($this->userId !== null, fn (Builder $q) => $q->where('user_id', $this->userId));
+            ->when($this->userId !== null, fn (Builder $q) => $q->where('user_id', $this->userId))
+            ->when(filled($this->accountIds), fn (Builder $q) => $q->whereIn('account_id', $this->accountIds));
+    }
+
+    /**
+     * Same date/account constraints as constrainTransactions(), but never
+     * the userId scope - used by the leaderboard queries, which are
+     * explicitly cross-user regardless of scope.
+     */
+    private function constrainTransactionsIgnoringUser(Builder $query): Builder
+    {
+        return $query
+            ->excludingReserved()
+            ->whereBetween('date', [$this->from->startOfDay(), $this->to->endOfDay()])
+            ->when(filled($this->accountIds), fn (Builder $q) => $q->whereIn('account_id', $this->accountIds));
     }
 
     /**
@@ -301,9 +310,7 @@ readonly class TransactionStats
      */
     public function leaderboard(): array
     {
-        return Transaction::query()
-            ->excludingReserved()
-            ->whereBetween('date', [$this->from->startOfDay(), $this->to->endOfDay()])
+        return $this->constrainTransactionsIgnoringUser(Transaction::query())
             ->join('users', 'users.id', '=', 'transactions.user_id')
             ->groupBy('users.id', 'users.name')
             ->selectRaw('users.id as user_id, users.name')

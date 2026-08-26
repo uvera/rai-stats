@@ -10,7 +10,11 @@ use App\Filament\Widgets\SpendPerAccountTable;
 use App\Filament\Widgets\SpendPerPlaceOverTimeChart;
 use App\Filament\Widgets\StatsOverview;
 use App\Filament\Widgets\TopPlacesChart;
+use App\Models\Account;
+use Filament\Forms\Components\Select;
 use Filament\Pages\Page;
+use Filament\Schemas\Schema;
+use Illuminate\Database\Eloquent\Builder;
 
 /**
  * Shared filter bar (date range + period toggle) behind both My Stats and
@@ -39,12 +43,56 @@ abstract class AbstractStatsPage extends Page
             'from' => now()->subMonths(6)->startOfMonth()->format('Y-m-d'),
             'to' => now()->format('Y-m-d'),
             'period' => 'month',
+            'accountIds' => [],
         ];
     }
 
     abstract protected function scopeUserId(): ?int;
 
     abstract public function showLeaderboard(): bool;
+
+    /**
+     * Accounts selectable in this page's account filter - the current
+     * user's own accounts on My Stats, every family member's on Family
+     * Stats.
+     */
+    abstract protected function accountsScope(): Builder;
+
+    /**
+     * @return array<int, string>
+     */
+    public function accountOptions(): array
+    {
+        return $this->accountsScope()
+            ->orderBy('description')
+            ->get()
+            ->mapWithKeys(fn (Account $account) => [$account->id => $this->formatAccountOption($account)])
+            ->all();
+    }
+
+    protected function formatAccountOption(Account $account): string
+    {
+        return "{$account->description} ({$account->number})";
+    }
+
+    /**
+     * Rendered in the Blade view as `{{ $this->accountsFilter }}` - a real
+     * Filament multi-select (tags/search UI) bound directly to
+     * $this->filters['accountIds'], instead of a plain HTML <select multiple>.
+     */
+    public function accountsFilter(Schema $schema): Schema
+    {
+        return $schema
+            ->statePath('filters')
+            ->components([
+                Select::make('accountIds')
+                    ->label('Accounts')
+                    ->multiple()
+                    ->options(fn () => $this->accountOptions())
+                    ->placeholder('All accounts')
+                    ->live(),
+            ]);
+    }
 
     public function getWidgetData(): array
     {

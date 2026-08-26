@@ -2,8 +2,10 @@
 
 namespace App\Filament\Pages;
 
+use App\Models\Account;
 use BackedEnum;
 use Filament\Support\Icons\Heroicon;
+use Illuminate\Database\Eloquent\Builder;
 
 class MyStats extends AbstractStatsPage
 {
@@ -21,5 +23,10 @@ class MyStats extends AbstractStatsPage
     public function showLeaderboard(): bool
     {
         return false;
+    }
+
+    protected function accountsScope(): Builder
+    {
+        return Account::query()->where('user_id', auth()->id());
     }
 }

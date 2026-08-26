@@ -2,8 +2,10 @@
 
 namespace App\Filament\Pages;
 
+use App\Models\Account;
 use BackedEnum;
 use Filament\Support\Icons\Heroicon;
+use Illuminate\Database\Eloquent\Builder;
 
 class FamilyStats extends AbstractStatsPage
 {
@@ -21,5 +23,15 @@ class FamilyStats extends AbstractStatsPage
     public function showLeaderboard(): bool
     {
         return true;
+    }
+
+    protected function accountsScope(): Builder
+    {
+        return Account::query()->with('user');
+    }
+
+    protected function formatAccountOption(Account $account): string
+    {
+        return "{$account->user->name} - {$account->description} ({$account->number})";
     }
 }

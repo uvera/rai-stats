@@ -25,6 +25,9 @@ trait ReadsStatsFilters
             from: CarbonImmutable::parse($this->pageFilters['from'] ?? now()->subMonths(6)->startOfMonth()),
             to: CarbonImmutable::parse($this->pageFilters['to'] ?? now()),
             period: $this->pageFilters['period'] ?? 'month',
+            accountIds: filled($this->pageFilters['accountIds'] ?? null)
+                ? array_map('intval', $this->pageFilters['accountIds'])
+                : null,
         );
     }
 }

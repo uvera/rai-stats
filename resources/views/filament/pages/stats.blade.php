@@ -23,6 +23,9 @@
                     </x-filament::input.select>
                 </x-filament::input.wrapper>
             </div>
+            <div class="min-w-64">
+                {{ $this->accountsFilter }}
+            </div>
         </div>
     </x-filament::section>
 
