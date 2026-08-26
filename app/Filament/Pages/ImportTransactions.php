@@ -11,8 +11,12 @@ use App\Support\DateRangeMerger;
 use App\Support\RaiffeisenImportSession;
 use BackedEnum;
 use DateTimeImmutable;
+use Filament\Forms\Components\DatePicker;
+use Filament\Forms\Components\Select;
+use Filament\Forms\Components\TextInput;
 use Filament\Notifications\Notification;
 use Filament\Pages\Page;
+use Filament\Schemas\Schema;
 use Filament\Support\Icons\Heroicon;
 
 class ImportTransactions extends Page
@@ -62,6 +66,44 @@ class ImportTransactions extends Page
         $this->username = auth()->user()->raiffeisen_username;
         $this->toDate = now()->format('Y-m-d');
         $this->fromDate = now()->subMonth()->format('Y-m-d');
+    }
+
+    public function credentialsForm(Schema $schema): Schema
+    {
+        return $schema->components([
+            TextInput::make('username')
+                ->label('Username')
+                ->required(),
+            TextInput::make('password')
+                ->label('Password')
+                ->password()
+                ->revealable()
+                ->required(),
+        ]);
+    }
+
+    public function selectForm(Schema $schema): Schema
+    {
+        return $schema
+            ->columns(4)
+            ->components([
+                Select::make('selectedAccountNumber')
+                    ->label('Account')
+                    ->columnSpan(2)
+                    ->options(fn () => collect($this->accounts)
+                        ->mapWithKeys(fn (array $a) => [
+                            $a['number'] => "{$a['description']} ({$a['currency_code']}, {$a['number']})",
+                        ])
+                        ->all())
+                    ->required(),
+                DatePicker::make('fromDate')
+                    ->label('From')
+                    ->required(),
+                DatePicker::make('toDate')
+                    ->label('To')
+                    ->required()
+                    ->afterOrEqual('fromDate'),
+            ]);
     }
 
     public function submitCredentials(): void
@@ -181,6 +223,20 @@ class ImportTransactions extends Page
         $this->rangeNotice = $adjusted
             ? 'Part of that range is already imported - only the missing part was added.'
             : null;
+    }
+
+    /**
+     * Queues the currently selected from/to range for every fetched
+     * account, not just the one picked in the dropdown - accounts are
+     * otherwise easy to leave with no coverage at all, since nothing queues
+     * for them unless picked one at a time.
+     */
+    public function addRangeForAllAccounts(): void
+    {
+        foreach ($this->accounts as $account) {
+            $this->selectedAccountNumber = $account['number'];
+            $this->addRange();
+        }
     }
 
     public function removeRange(int $index): void
