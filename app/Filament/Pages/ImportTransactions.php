@@ -11,6 +11,7 @@ use App\Support\DateRangeMerger;
 use App\Support\RaiffeisenImportSession;
 use BackedEnum;
 use DateTimeImmutable;
+use Filament\Forms\Components\CheckboxList;
 use Filament\Forms\Components\DatePicker;
 use Filament\Forms\Components\Select;
 use Filament\Forms\Components\TextInput;
@@ -50,6 +51,11 @@ class ImportTransactions extends Page
 
     public ?string $toDate = null;
 
+    /** @var array<int, string> */
+    public array $selectedAccountNumbers = [];
+
+    public ?int $guidedYear = null;
+
     /** @var array<int, array{account_number: string, from: string, to: string}> */
     public array $queuedRanges = [];
 
@@ -66,6 +72,7 @@ class ImportTransactions extends Page
         $this->username = auth()->user()->raiffeisen_username;
         $this->toDate = now()->format('Y-m-d');
         $this->fromDate = now()->subMonth()->format('Y-m-d');
+        $this->guidedYear = (int) now()->format('Y');
     }
 
     public function credentialsForm(Schema $schema): Schema
@@ -104,6 +111,58 @@ class ImportTransactions extends Page
                     ->required()
                     ->afterOrEqual('fromDate'),
             ]);
+    }
+
+    public function guidedForm(Schema $schema): Schema
+    {
+        $currentYear = (int) now()->format('Y');
+
+        return $schema
+            ->columns(3)
+            ->components([
+                CheckboxList::make('selectedAccountNumbers')
+                    ->label('Accounts')
+                    ->columnSpan(2)
+                    ->columns(2)
+                    ->options(fn () => collect($this->accounts)
+                        ->mapWithKeys(fn (array $a) => [
+                            $a['number'] => "{$a['description']} ({$a['currency_code']}, {$a['number']})",
+                        ])
+                        ->all())
+                    ->required(),
+                Select::make('guidedYear')
+                    ->label('Year')
+                    ->options(collect(range($currentYear, $currentYear - 5))
+                        ->mapWithKeys(fn (int $year) => [$year => (string) $year])
+                        ->all())
+                    ->required(),
+            ]);
+    }
+
+    /**
+     * Queues a Jan-Jun and a Jul-Dec range for the year, for every selected
+     * account - the guided path to a full year's import without having to
+     * pick ranges by hand. Reuses addRange() so existing coverage per half
+     * is still respected and only the missing part gets queued.
+     */
+    public function queueGuidedImport(): void
+    {
+        $this->validate([
+            'selectedAccountNumbers' => ['required', 'array', 'min:1'],
+            'guidedYear' => ['required', 'integer'],
+        ]);
+
+        foreach ($this->selectedAccountNumbers as $accountNumber) {
+            $this->selectedAccountNumber = $accountNumber;
+
+            $this->fromDate = "{$this->guidedYear}-01-01";
+            $this->toDate = "{$this->guidedYear}-06-30";
+            $this->addRange();
+
+            $this->fromDate = "{$this->guidedYear}-07-01";
+            $this->toDate = "{$this->guidedYear}-12-31";
+            $this->addRange();
+        }
     }
 
     public function submitCredentials(): void
@@ -296,13 +355,31 @@ class ImportTransactions extends Page
         }
 
         $this->importResults = $results;
-        RaiffeisenImportSession::clear($this->importSessionId);
+        $this->queuedRanges = [];
         $this->step = 'done';
 
         Notification::make()
             ->title('Import complete')
             ->success()
             ->send();
+    }
+
+    /**
+     * Back to picking ranges for another import, reusing the still-logged-in
+     * session's cookies instead of forcing the user through RaiOnline login
+     * (and, if enabled, the mobile push 2FA wait) again.
+     */
+    public function continueImporting(): void
+    {
+        $this->reset(['queuedRanges', 'rangeNotice', 'importResults']);
+        $this->step = 'select';
+
+        // Re-put the state to refresh its TTL, so a longer guided session
+        // doesn't expire the cached cookies between imports.
+        $state = RaiffeisenImportSession::getState($this->importSessionId);
+        if ($state) {
+            RaiffeisenImportSession::setState($this->importSessionId, $state);
+        }
     }
 
     public function startOver(): void
@@ -313,7 +390,8 @@ class ImportTransactions extends Page
 
         $this->reset([
             'step', 'password', 'importSessionId', 'accounts', 'selectedAccountNumber',
-            'queuedRanges', 'rangeNotice', 'importResults', 'errorMessage', 'waitingMessage',
+            'selectedAccountNumbers', 'queuedRanges', 'rangeNotice', 'importResults',
+            'errorMessage', 'waitingMessage',
         ]);
         $this->mount();
     }

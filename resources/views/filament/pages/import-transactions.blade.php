@@ -35,8 +35,28 @@
     @endif
 
     @if ($step === 'select')
-        <div class="space-y-6">
+        <div style="display: flex; flex-direction: column; gap: 1.5rem;">
             <x-filament::section>
+                <x-slot name="heading">Guided import</x-slot>
+                <x-slot name="description">
+                    Pick accounts and a year - a Jan&ndash;Jun and a Jul&ndash;Dec range will be queued
+                    for each, skipping whatever's already imported.
+                </x-slot>
+
+                <form wire:submit="queueGuidedImport" style="max-width: 42rem;">
+                    {{ $this->guidedForm }}
+
+                    <div style="margin-top: 1.5rem;">
+                        <x-filament::button type="submit" color="gray">
+                            Queue guided import
+                        </x-filament::button>
+                    </div>
+                </form>
+            </x-filament::section>
+
+            <x-filament::section>
+                <x-slot name="heading">Manual range</x-slot>
+
                 <form wire:submit="addRange" style="max-width: 42rem;">
                     {{ $this->selectForm }}
 
@@ -113,7 +133,15 @@
             </ul>
 
             <x-slot name="footer">
-                <x-filament::button wire:click="startOver" color="gray">Import more</x-filament::button>
+                <div style="display: flex; gap: 0.5rem;">
+                    <x-filament::button wire:click="continueImporting">
+                        Import more (same login)
+                    </x-filament::button>
+
+                    <x-filament::button wire:click="startOver" color="gray" outlined>
+                        Log out &amp; start over
+                    </x-filament::button>
+                </div>
             </x-slot>
         </x-filament::section>
     @endif
