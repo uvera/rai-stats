@@ -6,10 +6,12 @@
                 used only for this import and is never stored.
             </x-slot>
 
-            <form wire:submit="submitCredentials" class="max-w-md space-y-6">
+            <form wire:submit="submitCredentials" class="max-w-md" style="max-width: 28rem;">
                 {{ $this->credentialsForm }}
 
-                <x-filament::button type="submit">Log in</x-filament::button>
+                <div style="margin-top: 1.5rem;">
+                    <x-filament::button type="submit">Log in</x-filament::button>
+                </div>
             </form>
         </x-filament::section>
     @endif
