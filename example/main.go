@@ -1,15 +1,18 @@
 package main
 
 import (
+	"bufio"
 	"context"
 	"encoding/json"
 	"flag"
 	"fmt"
 	"os"
 	"slices"
+	"strings"
 	"time"
 
 	"github.com/savely-krasovsky/raiffeisen-retail-api"
+	"golang.org/x/term"
 )
 
 var (
@@ -24,8 +27,25 @@ func main() {
 	flag.StringVar(&username, "username", "", "Username")
 	flag.StringVar(&password, "password", "", "Password")
 	flag.StringVar(&from, "from", "", "From date")
-	flag.StringVar(&to, "to", now.Format("02.01.2006"), "To date")
+	flag.StringVar(&to, "to", "", "To date")
 	flag.Parse()
+
+	reader := bufio.NewReader(os.Stdin)
+
+	if username == "" {
+		username = promptLine(reader, "Username: ")
+	}
+	if password == "" {
+		password = promptPassword("Password: ")
+	}
+	if from == "" {
+		defaultFrom := now.AddDate(0, -1, 0).Format("02.01.2006")
+		from = promptLineDefault(reader, fmt.Sprintf("From date [%s]: ", defaultFrom), defaultFrom)
+	}
+	if to == "" {
+		defaultTo := now.Format("02.01.2006")
+		to = promptLineDefault(reader, fmt.Sprintf("To date [%s]: ", defaultTo), defaultTo)
+	}
 
 	c, err := raiffeisen.NewClient()
 	if err != nil {
@@ -108,4 +128,31 @@ func main() {
 			}
 		}()
 	}
+}
+
+func promptLine(reader *bufio.Reader, prompt string) string {
+	fmt.Print(prompt)
+	line, err := reader.ReadString('\n')
+	if err != nil {
+		panic(err)
+	}
+	return strings.TrimSpace(line)
+}
+
+func promptLineDefault(reader *bufio.Reader, prompt, def string) string {
+	value := promptLine(reader, prompt)
+	if value == "" {
+		return def
+	}
+	return value
+}
+
+func promptPassword(prompt string) string {
+	fmt.Print(prompt)
+	bytePassword, err := term.ReadPassword(int(os.Stdin.Fd()))
+	fmt.Println()
+	if err != nil {
+		panic(err)
+	}
+	return strings.TrimSpace(string(bytePassword))
 }

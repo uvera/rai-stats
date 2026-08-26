@@ -27,3 +27,11 @@ go.work.sum
 
 # Goland
 .idea
+
+# built binary
+/exporter
+
+# fetched transaction/account data (contains real financial info)
+accounts.json
+transactions_*.json
+transactions.json
