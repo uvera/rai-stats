@@ -38,7 +38,7 @@ abstract class AbstractStatsPage extends Page
      */
     public ?array $filters = null;
 
-    public function mount(): void
+    protected function initializeFilters(): void
     {
         $this->filters = [
             'from' => now()->subMonths(6)->startOfMonth()->format('Y-m-d'),

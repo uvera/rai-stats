@@ -15,6 +15,11 @@ class MyStats extends AbstractStatsPage
 
     protected static string|BackedEnum|null $navigationIcon = Heroicon::OutlinedChartBar;
 
+    public function mount(): void
+    {
+        $this->initializeFilters();
+    }
+
     protected function scopeUserId(): ?int
     {
         return auth()->id();

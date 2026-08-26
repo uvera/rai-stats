@@ -2,7 +2,9 @@
 
 namespace App\Filament\Widgets;
 
+use App\Filament\Pages\UserStats;
 use App\Filament\Widgets\Concerns\ReadsStatsFilters;
+use App\Models\User;
 use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Table;
 use Filament\Widgets\TableWidget;
@@ -22,7 +24,12 @@ class LeaderboardTable extends TableWidget
             ->heading('Leaderboard')
             ->paginated(false)
             ->columns([
-                TextColumn::make('name')->label('Who')->sortable(),
+                TextColumn::make('name')
+                    ->label('Who')
+                    ->sortable()
+                    ->url(fn (User $record) => auth()->user()?->isAdmin()
+                        ? UserStats::getUrl(['record' => $record])
+                        : null),
                 TextColumn::make('spend_cents')
                     ->label('Spend')
                     ->formatStateUsing(fn ($state) => number_format(($state ?? 0) / 100, 2))

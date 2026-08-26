@@ -15,6 +15,11 @@ class FamilyStats extends AbstractStatsPage
 
     protected static string|BackedEnum|null $navigationIcon = Heroicon::OutlinedUserGroup;
 
+    public function mount(): void
+    {
+        $this->initializeFilters();
+    }
+
     protected function scopeUserId(): ?int
     {
         return null;
