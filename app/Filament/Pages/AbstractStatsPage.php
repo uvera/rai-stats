@@ -2,128 +2,103 @@
 
 namespace App\Filament\Pages;
 
-use App\Support\TransactionStats;
-use Carbon\CarbonImmutable;
+use App\Filament\Widgets\IncomeExpenseChart;
+use App\Filament\Widgets\LargestTransactionsTable;
+use App\Filament\Widgets\LeaderboardTable;
+use App\Filament\Widgets\RecurringChargesTable;
+use App\Filament\Widgets\SpendPerAccountTable;
+use App\Filament\Widgets\SpendPerPlaceOverTimeChart;
+use App\Filament\Widgets\StatsOverview;
+use App\Filament\Widgets\TopPlacesChart;
 use Filament\Pages\Page;
 
 /**
- * Shared filter bar (date range + period toggle) and widget data behind
- * both My Stats and Family Stats - the two pages differ only in whether
- * the underlying TransactionStats is scoped to the current user or to
- * everyone, and whether the cross-user leaderboard is shown.
+ * Shared filter bar (date range + period toggle) behind both My Stats and
+ * Family Stats. The actual widgets/tables/charts live in
+ * app/Filament/Widgets and read the filter state via Filament's native
+ * "page filters drive widgets" mechanism (Filament\Widgets\Concerns\
+ * InteractsWithPageFilters reads $this->filters, automatically passed down
+ * as $pageFilters to every widget rendered on this page).
+ *
+ * The two pages differ only in which user id widgets are scoped to (passed
+ * via getWidgetData(), since it's not something the user edits like the
+ * date range) and whether the leaderboard widget is included.
  */
 abstract class AbstractStatsPage extends Page
 {
     protected string $view = 'filament.pages.stats';
 
-    public string $from;
-
-    public string $to;
-
-    /** @var 'month'|'quarter'|'year' */
-    public string $period = 'month';
-
-    public string $accountSortField = 'spend_cents';
-
-    public string $accountSortDirection = 'desc';
+    /**
+     * @var array<string, mixed>|null
+     */
+    public ?array $filters = null;
 
     public function mount(): void
     {
-        $this->to = now()->format('Y-m-d');
-        $this->from = now()->subMonths(6)->startOfMonth()->format('Y-m-d');
+        $this->filters = [
+            'from' => now()->subMonths(6)->startOfMonth()->format('Y-m-d'),
+            'to' => now()->format('Y-m-d'),
+            'period' => 'month',
+        ];
     }
 
     abstract protected function scopeUserId(): ?int;
 
     abstract public function showLeaderboard(): bool;
 
-    public function sortAccountsBy(string $field): void
+    public function getWidgetData(): array
     {
-        if ($this->accountSortField === $field) {
-            $this->accountSortDirection = $this->accountSortDirection === 'desc' ? 'asc' : 'desc';
-        } else {
-            $this->accountSortField = $field;
-            $this->accountSortDirection = 'desc';
-        }
-    }
-
-    protected function stats(): TransactionStats
-    {
-        return new TransactionStats(
-            userId: $this->scopeUserId(),
-            from: CarbonImmutable::parse($this->from),
-            to: CarbonImmutable::parse($this->to),
-            period: $this->period,
-        );
+        return [
+            'userId' => $this->scopeUserId(),
+        ];
     }
 
     /**
-     * @return array<int, array{account_id: int, number: string, description: string, currency_code: string, spend_cents: int, income_cents: int}>
+     * Bypasses Filament's schema-based widget rendering (this page uses a
+     * plain Blade view instead), so the data Filament would normally merge
+     * in automatically - getWidgetData() plus pageFilters - is built here
+     * for the view to pass into <x-filament-widgets::widgets> by hand.
+     *
+     * @return array<string, mixed>
      */
-    public function spendPerAccount(): array
+    public function widgetData(): array
     {
-        $rows = $this->stats()->spendPerAccount();
-
-        usort($rows, fn ($a, $b) => $this->accountSortDirection === 'desc'
-            ? $b[$this->accountSortField] <=> $a[$this->accountSortField]
-            : $a[$this->accountSortField] <=> $b[$this->accountSortField]);
-
-        return $rows;
+        return [
+            ...$this->getWidgetData(),
+            'pageFilters' => $this->filters,
+        ];
     }
 
-    public function topPlaces(): array
+    /**
+     * @return array<int, class-string>
+     */
+    public function getStatsWidgets(): array
     {
-        return $this->stats()->topPlaces();
+        return [StatsOverview::class];
     }
 
-    public function spendPerPlaceOverTime(): array
+    /**
+     * @return array<int, class-string>
+     */
+    public function getChartWidgets(): array
     {
-        return $this->stats()->spendPerPlaceOverTime();
+        return [
+            TopPlacesChart::class,
+            IncomeExpenseChart::class,
+            SpendPerPlaceOverTimeChart::class,
+        ];
     }
 
-    public function incomeVsExpenseTrend(): array
+    /**
+     * @return array<int, class-string>
+     */
+    public function getTableWidgets(): array
     {
-        return $this->stats()->incomeVsExpenseTrend();
-    }
-
-    public function atmWithdrawalTotalCents(): int
-    {
-        return $this->stats()->atmWithdrawalTotalCents();
-    }
-
-    public function largestTransactions(): array
-    {
-        return $this->stats()->largestTransactions();
-    }
-
-    public function averageSpendCents(): int
-    {
-        return $this->stats()->averageSpendCents();
-    }
-
-    public function transactionCount(): int
-    {
-        return $this->stats()->transactionCount();
-    }
-
-    public function recurringCharges(): array
-    {
-        return $this->stats()->recurringCharges();
-    }
-
-    public function leaderboard(): array
-    {
-        return $this->stats()->leaderboard();
-    }
-
-    public function formatPeriodLabel(string $period): string
-    {
-        $date = CarbonImmutable::parse($period);
-
-        return match ($this->period) {
-            'quarter' => 'Q'.$date->quarter.' '.$date->year,
-            'year' => (string) $date->year,
-            default => $date->format('M Y'),
-        };
+        return [
+            SpendPerAccountTable::class,
+            LargestTransactionsTable::class,
+            RecurringChargesTable::class,
+            ...($this->showLeaderboard() ? [LeaderboardTable::class] : []),
+        ];
     }
 }

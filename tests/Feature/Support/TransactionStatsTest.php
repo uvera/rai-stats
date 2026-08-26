@@ -181,4 +181,72 @@ class TransactionStatsTest extends TestCase
 
         $this->assertSame(0, $this->stats($user->id)->transactionCount());
     }
+
+    public function test_spend_per_account_query_matches_the_array_version(): void
+    {
+        $user = User::factory()->create();
+        $account = Account::factory()->for($user)->create(['description' => 'Main']);
+
+        Transaction::factory()->for($account)->for($user)->create(['amount_cents' => -1000]);
+        Transaction::factory()->for($account)->for($user)->create(['amount_cents' => 2500]);
+
+        $rows = $this->stats($user->id)->spendPerAccountQuery()->get();
+
+        $this->assertCount(1, $rows);
+        $this->assertSame('Main', $rows[0]->description);
+        $this->assertSame(1000, (int) $rows[0]->spend_cents);
+        $this->assertSame(2500, (int) $rows[0]->income_cents);
+    }
+
+    public function test_leaderboard_query_matches_the_array_version(): void
+    {
+        $me = User::factory()->create(['name' => 'Me']);
+        $someoneElse = User::factory()->create(['name' => 'Sibling']);
+        $account = Account::factory()->for($me)->create();
+
+        Transaction::factory()->for($account)->for($me)->create(['amount_cents' => -1000]);
+        Transaction::factory()->for($account)->for($someoneElse)->create(['amount_cents' => -4000]);
+
+        $rows = $this->stats($me->id)->leaderboardQuery()->get();
+
+        $this->assertCount(2, $rows);
+        $this->assertSame('Sibling', $rows[0]->name);
+        $this->assertSame(4000, (int) $rows[0]->spend_cents);
+    }
+
+    public function test_largest_transactions_query_orders_by_absolute_amount(): void
+    {
+        $user = User::factory()->create();
+        $account = Account::factory()->for($user)->create();
+
+        $small = Transaction::factory()->for($account)->for($user)->create(['amount_cents' => -500]);
+        $big = Transaction::factory()->for($account)->for($user)->create(['amount_cents' => 15000]);
+
+        $rows = $this->stats($user->id)->largestTransactionsQuery()->get();
+
+        $this->assertSame($big->id, $rows[0]->id);
+        $this->assertSame($small->id, $rows[1]->id);
+    }
+
+    public function test_recurring_charges_query_matches_the_array_version(): void
+    {
+        $user = User::factory()->create();
+        $account = Account::factory()->for($user)->create();
+
+        foreach (['2026-01-05', '2026-02-05', '2026-03-05'] as $date) {
+            Transaction::factory()->for($account)->for($user)->create([
+                'place' => 'Streaming Co', 'amount_cents' => -999, 'date' => $date,
+            ]);
+        }
+
+        Transaction::factory()->for($account)->for($user)->create([
+            'place' => 'One Off Shop', 'amount_cents' => -5000, 'date' => '2026-01-10',
+        ]);
+
+        $rows = $this->stats($user->id)->recurringChargesQuery()->get();
+
+        $this->assertCount(1, $rows);
+        $this->assertSame('Streaming Co', $rows[0]->place);
+        $this->assertSame(3, (int) $rows[0]->months);
+    }
 }

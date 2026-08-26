@@ -3,7 +3,9 @@
 namespace App\Support;
 
 use App\Enums\TransactionType;
+use App\Models\Account;
 use App\Models\Transaction;
+use App\Models\User;
 use Carbon\CarbonImmutable;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Facades\DB;
@@ -38,6 +40,17 @@ readonly class TransactionStats
             ->when($this->userId !== null, fn (Builder $q) => $q->where('transactions.user_id', $this->userId));
     }
 
+    public function formatPeriod(string $period): string
+    {
+        $date = CarbonImmutable::parse($period);
+
+        return match ($this->period) {
+            'quarter' => 'Q'.$date->quarter.' '.$date->year,
+            'year' => (string) $date->year,
+            default => $date->format('M Y'),
+        };
+    }
+
     private function periodTruncSql(): string
     {
         $unit = match ($this->period) {
@@ -64,6 +77,76 @@ readonly class TransactionStats
             ->get()
             ->map(fn ($row) => $row->toArray())
             ->all();
+    }
+
+    /**
+     * Same data as spendPerAccount(), but as a real per-Account Eloquent
+     * query (via withSum on the transactions relation) rather than a plain
+     * array, so it can drive a native, sortable Filament table.
+     */
+    public function spendPerAccountQuery(): Builder
+    {
+        return Account::query()
+            ->whereHas('transactions', fn (Builder $q) => $this->constrainTransactions($q))
+            ->withSum(['transactions as spend_cents' => fn (Builder $q) => $this->constrainTransactions($q)->where('amount_cents', '<', 0)], DB::raw('-amount_cents'))
+            ->withSum(['transactions as income_cents' => fn (Builder $q) => $this->constrainTransactions($q)->where('amount_cents', '>', 0)], 'amount_cents')
+            ->orderByDesc('spend_cents');
+    }
+
+    /**
+     * Family Stats only: same totals as leaderboard(), but as a real
+     * per-User Eloquent query for a native Filament table.
+     */
+    public function leaderboardQuery(): Builder
+    {
+        return User::query()
+            ->whereHas('transactions', fn (Builder $q) => $q
+                ->excludingReserved()
+                ->whereBetween('date', [$this->from->startOfDay(), $this->to->endOfDay()]))
+            ->withSum(['transactions as spend_cents' => fn (Builder $q) => $q
+                ->excludingReserved()
+                ->whereBetween('date', [$this->from->startOfDay(), $this->to->endOfDay()])
+                ->where('amount_cents', '<', 0)], DB::raw('-amount_cents'))
+            ->withSum(['transactions as income_cents' => fn (Builder $q) => $q
+                ->excludingReserved()
+                ->whereBetween('date', [$this->from->startOfDay(), $this->to->endOfDay()])
+                ->where('amount_cents', '>', 0)], 'amount_cents')
+            ->orderByDesc('spend_cents');
+    }
+
+    /**
+     * Same rows as largestTransactions(), as a query for a native table.
+     */
+    public function largestTransactionsQuery(): Builder
+    {
+        return $this->baseQuery()->orderByRaw('ABS(amount_cents) DESC');
+    }
+
+    /**
+     * Same groups as recurringCharges(), as a query for a native table.
+     * "id" is synthetic (MIN(id) per place group) - these rows aren't real
+     * individual transactions, just enough of a stable per-row identity for
+     * Filament's table to key on.
+     */
+    public function recurringChargesQuery(int $minMonths = 3): Builder
+    {
+        return $this->baseQuery()
+            ->where('amount_cents', '<', 0)
+            ->groupBy('place')
+            ->selectRaw('MIN(id) as id, place')
+            ->selectRaw("COUNT(DISTINCT date_trunc('month', date)) as months")
+            ->selectRaw('AVG(-amount_cents) as average_cents')
+            ->having(DB::raw("COUNT(DISTINCT date_trunc('month', date))"), '>=', $minMonths)
+            ->havingRaw('COALESCE(STDDEV(-amount_cents), 0) <= AVG(-amount_cents) * 0.15')
+            ->orderByDesc('months');
+    }
+
+    private function constrainTransactions(Builder $query): Builder
+    {
+        return $query
+            ->excludingReserved()
+            ->whereBetween('date', [$this->from->startOfDay(), $this->to->endOfDay()])
+            ->when($this->userId !== null, fn (Builder $q) => $q->where('user_id', $this->userId));
     }
 
     /**
