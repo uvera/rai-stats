@@ -45,6 +45,12 @@ ddev artisan test
 Tests run against a real Postgres database (see `phpunit.xml`), not SQLite —
 there's no in-memory substitute configured.
 
+## Deployment
+
+See [docs/deployment.md](docs/deployment.md) for running this outside DDEV —
+LXC/systemd and Docker/docker-compose setups, required background processes
+(queue worker, scheduler), and environment variables.
+
 ## Status
 
 Early build, in progress via the [Hedgehog](https://github.com/skyf0xx/hedgehog)
