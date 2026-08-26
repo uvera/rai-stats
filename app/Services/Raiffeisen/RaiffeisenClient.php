@@ -9,6 +9,7 @@ use App\Services\Raiffeisen\Data\ReservedTransaction;
 use App\Services\Raiffeisen\Data\Transaction;
 use GuzzleHttp\Client;
 use GuzzleHttp\Cookie\CookieJar;
+use Illuminate\Support\Facades\Log;
 
 /**
  * Ports raiffeisen-retail-api's client.go to PHP: logs into RaiOnline (the
@@ -103,8 +104,10 @@ class RaiffeisenClient
     public function requestLoginPush(string $ticket, string $username, int $timeoutSeconds = 180): PushLoginResult
     {
         $token = $this->signalRNegotiate();
+        Log::debug('raiffeisen.signalr.negotiate.ok', ['token_prefix' => substr($token, 0, 12)]);
 
         $stream = $this->signalRConnectStream($token);
+        Log::debug('raiffeisen.signalr.connect.opened');
 
         $deadline = microtime(true) + $timeoutSeconds;
         $buffer = '';
@@ -124,6 +127,10 @@ class RaiffeisenClient
                     if (str_starts_with($line, 'data: ')) {
                         return substr($line, strlen('data: '));
                     }
+
+                    if (trim($line) !== '') {
+                        Log::debug('raiffeisen.signalr.line.ignored', ['line' => $line]);
+                    }
                 }
 
                 if ($stream->eof()) {
@@ -134,7 +141,13 @@ class RaiffeisenClient
                     throw new RaiffeisenException('Timed out reading SignalR stream');
                 }
 
-                $buffer .= $stream->read(4096);
+                $chunk = $stream->read(4096);
+                if ($chunk === '') {
+                    // Nothing available yet on a still-open stream; avoid a
+                    // tight busy-loop while waiting for the next server push.
+                    usleep(100_000);
+                }
+                $buffer .= $chunk;
             }
         };
 
@@ -143,6 +156,8 @@ class RaiffeisenClient
             if ($payload === null) {
                 throw new RaiffeisenException('SignalR stream closed before becoming ready');
             }
+
+            Log::debug('raiffeisen.signalr.ready.candidate', ['payload' => $payload]);
 
             if (trim($payload) === 'initialized') {
                 break;
@@ -154,8 +169,13 @@ class RaiffeisenClient
             }
         }
 
-        $this->signalRStart($token);
-        $this->signalRSend($token, $ticket, $username);
+        Log::debug('raiffeisen.signalr.ready');
+
+        $startResponse = $this->signalRStart($token);
+        Log::debug('raiffeisen.signalr.start.response', ['status' => $startResponse->getStatusCode(), 'body' => (string) $startResponse->getBody()]);
+
+        $sendResponse = $this->signalRSend($token, $ticket, $username);
+        Log::debug('raiffeisen.signalr.send.response', ['status' => $sendResponse->getStatusCode(), 'body' => (string) $sendResponse->getBody()]);
 
         while (true) {
             $payload = $nextDataLine();
@@ -169,8 +189,12 @@ class RaiffeisenClient
 
             $envelope = json_decode($payload, true);
             if (! is_array($envelope)) {
+                Log::debug('raiffeisen.signalr.push.line.unparsed', ['payload' => $payload]);
+
                 continue;
             }
+
+            Log::debug('raiffeisen.signalr.push.line', ['envelope' => $envelope]);
 
             if (! empty($envelope['E'])) {
                 throw new RaiffeisenException("SignalR hub error: {$envelope['E']}");
@@ -364,7 +388,7 @@ class RaiffeisenClient
         return $response->getBody();
     }
 
-    private function signalRStart(string $token): void
+    private function signalRStart(string $token)
     {
         $url = self::SIGNALR_BASE_URL.'/start?'.http_build_query([
             'transport' => 'serverSentEvents',
@@ -381,9 +405,11 @@ class RaiffeisenClient
         if ($response->getStatusCode() !== 200) {
             throw new RaiffeisenException("start status {$response->getStatusCode()}: {$response->getBody()}");
         }
+
+        return $response;
     }
 
-    private function signalRSend(string $token, string $ticket, string $username): void
+    private function signalRSend(string $token, string $ticket, string $username)
     {
         $data = json_encode([
             'H' => 'ibankinghub',
@@ -411,6 +437,8 @@ class RaiffeisenClient
         if ($response->getStatusCode() !== 200) {
             throw new RaiffeisenException("send status {$response->getStatusCode()}: {$response->getBody()}");
         }
+
+        return $response;
     }
 
     private function decodeJson(string $body): array
