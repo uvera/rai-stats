@@ -37,16 +37,18 @@
     @if ($step === 'select')
         <div class="space-y-6">
             <x-filament::section>
-                <form wire:submit="addRange" class="max-w-2xl space-y-4">
+                <form wire:submit="addRange" style="max-width: 42rem;">
                     {{ $this->selectForm }}
 
                     @if ($rangeNotice)
-                        <x-filament::badge color="warning">
-                            {{ $rangeNotice }}
-                        </x-filament::badge>
+                        <div style="margin-top: 1rem;">
+                            <x-filament::badge color="warning">
+                                {{ $rangeNotice }}
+                            </x-filament::badge>
+                        </div>
                     @endif
 
-                    <div class="flex gap-2">
+                    <div style="margin-top: 1.5rem; display: flex; gap: 0.5rem;">
                         <x-filament::button type="submit" color="gray">
                             Add to queue
                         </x-filament::button>
