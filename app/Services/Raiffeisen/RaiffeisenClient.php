@@ -362,6 +362,7 @@ class RaiffeisenClient
         }
 
         $data = json_decode($response->getBody()->getContents(), true);
+        Log::debug('raiffeisen.signalr.negotiate.body', ['body' => $data]);
         $token = $data['ConnectionToken'] ?? '';
 
         if ($token === '') {
@@ -390,6 +391,11 @@ class RaiffeisenClient
             ],
             'stream' => true,
             'read_timeout' => 200,
+        ]);
+
+        Log::debug('raiffeisen.signalr.connect.response', [
+            'status' => $response->getStatusCode(),
+            'headers' => $response->getHeaders(),
         ]);
 
         if ($response->getStatusCode() !== 200) {
