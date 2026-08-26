@@ -35,6 +35,7 @@ class RecurringChargesTable extends TableWidget
                     ->formatStateUsing(fn ($state) => number_format($state / 100, 2))
                     ->alignEnd()
                     ->sortable(),
-            ]);
+            ])
+            ->defaultSort('months', 'desc');
     }
 }

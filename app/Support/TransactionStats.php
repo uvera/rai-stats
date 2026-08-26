@@ -89,11 +89,14 @@ readonly class TransactionStats
      */
     public function spendPerAccountQuery(): Builder
     {
+        // No orderBy here: Filament appends its own orderBy for whichever
+        // column the table is sorted by (see the widget's ->defaultSort()),
+        // and a baked-in order here would always take precedence over it
+        // since ORDER BY clauses are evaluated in the order they're added.
         return Account::query()
             ->whereHas('transactions', fn (Builder $q) => $this->constrainTransactions($q))
             ->withSum(['transactions as spend_cents' => fn (Builder $q) => $this->constrainTransactions($q)->where('amount_cents', '<', 0)], DB::raw('-amount_cents'))
-            ->withSum(['transactions as income_cents' => fn (Builder $q) => $this->constrainTransactions($q)->where('amount_cents', '>', 0)], 'amount_cents')
-            ->orderByDesc('spend_cents');
+            ->withSum(['transactions as income_cents' => fn (Builder $q) => $this->constrainTransactions($q)->where('amount_cents', '>', 0)], 'amount_cents');
     }
 
     /**
@@ -102,11 +105,11 @@ readonly class TransactionStats
      */
     public function leaderboardQuery(): Builder
     {
+        // No orderBy here - see the comment in spendPerAccountQuery().
         return User::query()
             ->whereHas('transactions', fn (Builder $q) => $this->constrainTransactionsIgnoringUser($q))
             ->withSum(['transactions as spend_cents' => fn (Builder $q) => $this->constrainTransactionsIgnoringUser($q)->where('amount_cents', '<', 0)], DB::raw('-amount_cents'))
-            ->withSum(['transactions as income_cents' => fn (Builder $q) => $this->constrainTransactionsIgnoringUser($q)->where('amount_cents', '>', 0)], 'amount_cents')
-            ->orderByDesc('spend_cents');
+            ->withSum(['transactions as income_cents' => fn (Builder $q) => $this->constrainTransactionsIgnoringUser($q)->where('amount_cents', '>', 0)], 'amount_cents');
     }
 
     /**
@@ -114,7 +117,10 @@ readonly class TransactionStats
      */
     public function largestTransactionsQuery(): Builder
     {
-        return $this->baseQuery()->orderByRaw('ABS(amount_cents) DESC');
+        // No orderBy here - see the comment in spendPerAccountQuery(). The
+        // "largest first" ABS ordering is applied by the amount column's
+        // custom sortable() query in LargestTransactionsTable instead.
+        return $this->baseQuery();
     }
 
     /**
@@ -125,6 +131,7 @@ readonly class TransactionStats
      */
     public function recurringChargesQuery(int $minMonths = 3): Builder
     {
+        // No orderBy here - see the comment in spendPerAccountQuery().
         return $this->baseQuery()
             ->where('amount_cents', '<', 0)
             ->groupBy('place')
@@ -132,8 +139,7 @@ readonly class TransactionStats
             ->selectRaw("COUNT(DISTINCT date_trunc('month', date)) as months")
             ->selectRaw('AVG(-amount_cents) as average_cents')
             ->having(DB::raw("COUNT(DISTINCT date_trunc('month', date))"), '>=', $minMonths)
-            ->havingRaw('COALESCE(STDDEV(-amount_cents), 0) <= AVG(-amount_cents) * 0.15')
-            ->orderByDesc('months');
+            ->havingRaw('COALESCE(STDDEV(-amount_cents), 0) <= AVG(-amount_cents) * 0.15');
     }
 
     private function constrainTransactions(Builder $query): Builder

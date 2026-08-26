@@ -6,6 +6,7 @@ use App\Filament\Widgets\Concerns\ReadsStatsFilters;
 use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Table;
 use Filament\Widgets\TableWidget;
+use Illuminate\Database\Eloquent\Builder;
 
 class LargestTransactionsTable extends TableWidget
 {
@@ -17,11 +18,6 @@ class LargestTransactionsTable extends TableWidget
 
     public function table(Table $table): Table
     {
-        // No defaultSort(): the query is already ordered by ABS(amount_cents)
-        // desc (largest first regardless of sign) via largestTransactionsQuery().
-        // Setting a default sort here would make Filament order by the signed
-        // amount instead, which isn't what "largest" means. Columns are still
-        // individually sortable by clicking the header.
         return $table
             ->query(fn () => $this->stats()->largestTransactionsQuery())
             ->heading('Largest transactions')
@@ -34,7 +30,10 @@ class LargestTransactionsTable extends TableWidget
                     ->formatStateUsing(fn ($state, $record) => number_format($state / 100, 2).' '.$record->currency_code)
                     ->color(fn (int $state) => $state < 0 ? 'danger' : 'success')
                     ->alignEnd()
-                    ->sortable(),
-            ]);
+                    // Sorted by ABS(amount_cents), not the signed value, so
+                    // "largest" means biggest magnitude regardless of sign.
+                    ->sortable(query: fn (Builder $query, string $direction) => $query->orderByRaw("ABS(amount_cents) {$direction}")),
+            ])
+            ->defaultSort('amount_cents', 'desc');
     }
 }
