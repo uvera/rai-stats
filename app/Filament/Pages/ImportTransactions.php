@@ -105,9 +105,11 @@ class ImportTransactions extends Page
                     ->required(),
                 DatePicker::make('fromDate')
                     ->label('From')
+                    ->native(false)
                     ->required(),
                 DatePicker::make('toDate')
                     ->label('To')
+                    ->native(false)
                     ->required()
                     ->afterOrEqual('fromDate'),
             ]);

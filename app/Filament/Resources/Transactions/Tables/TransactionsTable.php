@@ -73,8 +73,8 @@ class TransactionsTable
                     ->options(collect(TransactionType::cases())->mapWithKeys(fn (TransactionType $t) => [$t->value => str($t->name)->headline()])),
                 Filter::make('date')
                     ->schema([
-                        DatePicker::make('from'),
-                        DatePicker::make('until'),
+                        DatePicker::make('from')->native(false),
+                        DatePicker::make('until')->native(false),
                     ])
                     ->query(function (Builder $query, array $data): Builder {
                         return $query

@@ -1,17 +1,8 @@
 <x-filament-panels::page>
     <x-filament::section>
         <div class="flex flex-wrap items-end gap-4">
-            <div>
-                <label class="text-sm font-medium text-gray-950 dark:text-white">From</label>
-                <x-filament::input.wrapper class="mt-1">
-                    <x-filament::input type="date" wire:model.live="filters.from" />
-                </x-filament::input.wrapper>
-            </div>
-            <div>
-                <label class="text-sm font-medium text-gray-950 dark:text-white">To</label>
-                <x-filament::input.wrapper class="mt-1">
-                    <x-filament::input type="date" wire:model.live="filters.to" />
-                </x-filament::input.wrapper>
+            <div class="min-w-64">
+                {{ $this->dateFilters }}
             </div>
             <div>
                 <label class="text-sm font-medium text-gray-950 dark:text-white">Period</label>

@@ -11,6 +11,7 @@ use App\Filament\Widgets\SpendPerPlaceOverTimeChart;
 use App\Filament\Widgets\StatsOverview;
 use App\Filament\Widgets\TopPlacesChart;
 use App\Models\Account;
+use Filament\Forms\Components\DatePicker;
 use Filament\Forms\Components\Select;
 use Filament\Pages\Page;
 use Filament\Schemas\Schema;
@@ -73,6 +74,28 @@ abstract class AbstractStatsPage extends Page
     protected function formatAccountOption(Account $account): string
     {
         return "{$account->description} ({$account->number})";
+    }
+
+    /**
+     * Rendered in the Blade view as `{{ $this->dateFilters }}` - Filament's
+     * non-native date pickers bound directly to $this->filters['from'] and
+     * $this->filters['to'], instead of plain HTML <input type="date">.
+     */
+    public function dateFilters(Schema $schema): Schema
+    {
+        return $schema
+            ->statePath('filters')
+            ->columns(2)
+            ->components([
+                DatePicker::make('from')
+                    ->label('From')
+                    ->native(false)
+                    ->live(),
+                DatePicker::make('to')
+                    ->label('To')
+                    ->native(false)
+                    ->live(),
+            ]);
     }
 
     /**
