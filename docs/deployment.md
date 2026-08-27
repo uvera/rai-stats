@@ -68,6 +68,18 @@ first admin account should be created via
 `php artisan make:admin` (interactive) rather than a seeder, so 2FA gets set
 up properly at creation time.
 
+After the first deploy (and after `merchant-categories:import` /
+manual category edits change what should ship by default), seed the
+merchant category rules — this does **not** create a user, so it's safe to
+run in production, unlike the bare `db:seed` (which also runs
+`UserFactory`, requiring the dev-only `fakerphp/faker` package that
+`composer install --no-dev` doesn't install):
+
+```sh
+php artisan db:seed --class=MerchantCategorySeeder
+php artisan transactions:recategorize
+```
+
 ## Option A — LXC container (systemd)
 
 Treat the container like a normal Linux box: PHP 8.3+, Postgres reachable
