@@ -9,6 +9,7 @@ use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 
 #[Fillable([
     'account_id', 'user_id', 'date', 'amount_cents', 'currency_code', 'place',
@@ -41,6 +42,15 @@ class Transaction extends Model
     public function category(): BelongsTo
     {
         return $this->belongsTo(Category::class);
+    }
+
+    /**
+     * The Moj Maxi receipt linked to this transaction, if one has been
+     * matched (see App\Services\Maxi\ReceiptTransactionMatcher).
+     */
+    public function maxiReceipt(): HasOne
+    {
+        return $this->hasOne(MaxiReceipt::class);
     }
 
     /**

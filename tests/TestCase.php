@@ -28,6 +28,15 @@ abstract class TestCase extends BaseTestCase
 
         $app['config']->set('database.connections.pgsql.database', 'db_test');
 
+        // Same DDEV problem as the database name: the container injects
+        // CACHE_STORE=database as a real env var that wins over phpunit.xml's
+        // <env force="true">. The database cache store issues its own writes
+        // which, inside RefreshDatabase's wrapping transaction on Postgres,
+        // can abort it and make later reads in the same test see nothing.
+        // Pin the in-memory store phpunit.xml already asks for.
+        $app['config']->set('cache.default', 'array');
+        $app['cache']->forgetDriver('array');
+
         // A connection may already have been resolved (and cached) during
         // boot with the pre-override config - purge it so the next
         // connection() call re-resolves using the value just set above.

@@ -23,5 +23,6 @@ class DatabaseSeeder extends Seeder
         ]);
 
         $this->call(MerchantCategorySeeder::class);
+        $this->call(ProductCategorySeeder::class);
     }
 }

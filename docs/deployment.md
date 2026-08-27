@@ -9,6 +9,13 @@ and `queue:listen` must never be used in place of `queue:work` — `queue:listen
 wraps each job in a child process with its own hard-coded 60s timeout that
 ignores the job's own `$timeout` and will kill the login job mid-flow.
 
+`SyncMaxiAccountJob` (`app/Jobs/SyncMaxiAccountJob.php`) also runs on the
+queue — it logs into the Moj Maxi loyalty backend, lists the account's
+invoices and downloads/parses each new eReceipt PDF. It's short-lived and
+fits the existing worker settings; it takes a `WithoutOverlapping` lock so
+one account never syncs twice at once. It is triggered manually (the "Sync
+receipts" action in the Moj Maxi section), never scheduled.
+
 Required background processes, everywhere this app runs:
 
 1. **PHP-FPM / web app** — serves HTTP requests (Filament admin panel + MCP
@@ -79,6 +86,17 @@ that `composer install --no-dev` doesn't install):
 php artisan db:seed --class=MerchantCategorySeeder
 php artisan transactions:recategorize
 ```
+
+The Moj Maxi feature has its own product-category taxonomy (separate from the
+merchant categories above). Seed the starter set the same way, then apply it:
+
+```sh
+php artisan db:seed --class=ProductCategorySeeder
+php artisan maxi:recategorize-items
+```
+
+Parsing eReceipt PDFs needs no system binary — it uses the pure-PHP
+`smalot/pdfparser` package, pulled in by `composer install`.
 
 If categories/rules were later edited via the admin UI or
 `merchant-categories:import` on this environment and should become the
