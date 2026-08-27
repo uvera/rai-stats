@@ -4,6 +4,7 @@ namespace Tests\Feature\Support;
 
 use App\Enums\TransactionType;
 use App\Models\Account;
+use App\Models\Category;
 use App\Models\Transaction;
 use App\Models\User;
 use App\Support\TransactionStats;
@@ -56,6 +57,25 @@ class TransactionStatsTest extends TestCase
         $this->assertSame(6000, $rows[0]['spend_cents']);
         $this->assertSame(2, $rows[0]['transaction_count']);
         $this->assertSame('Small Shop', $rows[1]['place']);
+    }
+
+    public function test_spend_by_category_groups_and_includes_uncategorized_bucket(): void
+    {
+        $user = User::factory()->create();
+        $account = Account::factory()->for($user)->create();
+        $category = Category::factory()->create(['name' => 'Groceries']);
+
+        Transaction::factory()->for($account)->for($user)->create(['category_id' => $category->id, 'amount_cents' => -1000]);
+        Transaction::factory()->for($account)->for($user)->create(['category_id' => $category->id, 'amount_cents' => -500]);
+        Transaction::factory()->for($account)->for($user)->create(['category_id' => null, 'amount_cents' => -2000]);
+
+        $rows = $this->stats($user->id)->spendByCategory();
+
+        $this->assertCount(2, $rows);
+        $this->assertSame('Uncategorized', $rows[0]['category_name']);
+        $this->assertSame(2000, $rows[0]['spend_cents']);
+        $this->assertSame('Groceries', $rows[1]['category_name']);
+        $this->assertSame(1500, $rows[1]['spend_cents']);
     }
 
     public function test_income_vs_expense_trend_groups_by_month(): void

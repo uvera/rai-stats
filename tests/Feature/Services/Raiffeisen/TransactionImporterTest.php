@@ -2,8 +2,11 @@
 
 namespace Tests\Feature\Services\Raiffeisen;
 
+use App\Enums\CategorySource;
 use App\Enums\TransactionType;
 use App\Models\Account;
+use App\Models\Category;
+use App\Models\MerchantCategoryRule;
 use App\Models\Transaction as TransactionModel;
 use App\Models\User;
 use App\Services\Raiffeisen\Data\ReservedTransaction;
@@ -102,6 +105,31 @@ class TransactionImporterTest extends TestCase
 
         $this->assertSame(0, $secondRunInserted);
         $this->assertDatabaseCount('transactions', 1);
+    }
+
+    public function test_imports_get_categorized_when_a_rule_matches(): void
+    {
+        $category = Category::factory()->create(['name' => 'Groceries']);
+        MerchantCategoryRule::factory()->for($category)->create(['pattern' => 'MAXI']);
+
+        $account = $this->makeAccount();
+        $importer = new TransactionImporter;
+
+        $importer->importTurnover($account, $account->user_id, [
+            $this->transactionDto('bank-id-1', -2000000, '213 MAXI 249 SRB NOVI SAD'),
+            $this->transactionDto('bank-id-2', -1000, 'Unrelated Place'),
+        ]);
+
+        $this->assertDatabaseHas('transactions', [
+            'bank_transaction_id' => 'bank-id-1',
+            'category_id' => $category->id,
+            'category_source' => CategorySource::Rule->value,
+        ]);
+        $this->assertDatabaseHas('transactions', [
+            'bank_transaction_id' => 'bank-id-2',
+            'category_id' => null,
+            'category_source' => null,
+        ]);
     }
 
     public function test_imports_reserved_funds_tagged_as_reserved(): void

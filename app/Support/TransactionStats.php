@@ -181,6 +181,26 @@ readonly class TransactionStats
     }
 
     /**
+     * Grouped by category, with a left join so uncategorized spend still
+     * appears as its own "Uncategorized" bucket instead of disappearing.
+     *
+     * @return array<int, array{category_id: int|null, category_name: string, spend_cents: int, transaction_count: int}>
+     */
+    public function spendByCategory(): array
+    {
+        return $this->baseQuery()
+            ->leftJoin('categories', 'categories.id', '=', 'transactions.category_id')
+            ->where('transactions.amount_cents', '<', 0)
+            ->groupBy('transactions.category_id', 'categories.name')
+            ->selectRaw("transactions.category_id, COALESCE(categories.name, 'Uncategorized') as category_name")
+            ->selectRaw('SUM(-transactions.amount_cents) as spend_cents, COUNT(*) as transaction_count')
+            ->orderByDesc('spend_cents')
+            ->get()
+            ->map(fn ($row) => $row->toArray())
+            ->all();
+    }
+
+    /**
      * Rows for the top N spend places, one column per period bucket.
      *
      * @return array{periods: array<int, string>, places: array<int, array{place: string, totals: array<string, int>}>}

@@ -6,6 +6,7 @@ use App\Filament\Widgets\IncomeExpenseChart;
 use App\Filament\Widgets\LargestTransactionsTable;
 use App\Filament\Widgets\LeaderboardTable;
 use App\Filament\Widgets\RecurringChargesTable;
+use App\Filament\Widgets\SpendByCategoryChart;
 use App\Filament\Widgets\SpendPerAccountTable;
 use App\Filament\Widgets\SpendPerPlaceOverTimeChart;
 use App\Filament\Widgets\StatsOverview;
@@ -151,6 +152,7 @@ abstract class AbstractStatsPage extends Page
     {
         return [
             TopPlacesChart::class,
+            SpendByCategoryChart::class,
             IncomeExpenseChart::class,
             SpendPerPlaceOverTimeChart::class,
         ];

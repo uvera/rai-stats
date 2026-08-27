@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Enums\CategorySource;
 use App\Enums\TransactionType;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Builder;
@@ -12,6 +13,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 #[Fillable([
     'account_id', 'user_id', 'date', 'amount_cents', 'currency_code', 'place',
     'reference', 'description', 'type', 'bank_transaction_id', 'dedup_key',
+    'category_id', 'category_source',
 ])]
 class Transaction extends Model
 {
@@ -22,6 +24,7 @@ class Transaction extends Model
         return [
             'date' => 'datetime',
             'type' => TransactionType::class,
+            'category_source' => CategorySource::class,
         ];
     }
 
@@ -33,6 +36,11 @@ class Transaction extends Model
     public function user(): BelongsTo
     {
         return $this->belongsTo(User::class);
+    }
+
+    public function category(): BelongsTo
+    {
+        return $this->belongsTo(Category::class);
     }
 
     /**

@@ -4,9 +4,11 @@ namespace Tests\Feature\Filament;
 
 use App\Filament\Widgets\LargestTransactionsTable;
 use App\Filament\Widgets\LeaderboardTable;
+use App\Filament\Widgets\SpendByCategoryChart;
 use App\Filament\Widgets\SpendPerAccountTable;
 use App\Filament\Widgets\StatsOverview;
 use App\Models\Account;
+use App\Models\Category;
 use App\Models\Transaction;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -72,6 +74,20 @@ class StatsWidgetsTest extends TestCase
         Livewire::test(LargestTransactionsTable::class, ['userId' => $user->id, 'pageFilters' => $this->pageFilters()])
             ->assertOk()
             ->assertSeeText('Big Purchase Inc');
+    }
+
+    public function test_spend_by_category_chart_renders(): void
+    {
+        $user = User::factory()->create();
+        $account = Account::factory()->for($user)->create();
+        $category = Category::factory()->create(['name' => 'Groceries']);
+
+        Transaction::factory()->for($account)->for($user)->create(['category_id' => $category->id, 'amount_cents' => -1000, 'date' => now()]);
+
+        $this->actingAs($user);
+
+        Livewire::test(SpendByCategoryChart::class, ['userId' => $user->id, 'pageFilters' => $this->pageFilters()])
+            ->assertOk();
     }
 
     public function test_leaderboard_table_lists_every_user_regardless_of_the_scope(): void

@@ -1,0 +1,341 @@
+{
+    "categories": [
+        {
+            "name": "ATM / Cash",
+            "color": null,
+            "rules": [
+                {
+                    "pattern": "BANKOMAT",
+                    "priority": 0
+                },
+                {
+                    "pattern": "ATM",
+                    "priority": 0
+                }
+            ]
+        },
+        {
+            "name": "Bank / Investment",
+            "color": null,
+            "rules": [
+                {
+                    "pattern": "RAIFFEISEN INVEST",
+                    "priority": 0
+                },
+                {
+                    "pattern": "TRAJNI NALOG",
+                    "priority": 0
+                },
+                {
+                    "pattern": "RAIFFEISEN BANKA",
+                    "priority": 0
+                },
+                {
+                    "pattern": "NAPLATA CLANARINE",
+                    "priority": 0
+                },
+                {
+                    "pattern": "NAPLATA ČLANARINE",
+                    "priority": 0
+                }
+            ]
+        },
+        {
+            "name": "Currency Exchange",
+            "color": null,
+            "rules": [
+                {
+                    "pattern": "MENJACNICA",
+                    "priority": 0
+                }
+            ]
+        },
+        {
+            "name": "Electronics",
+            "color": null,
+            "rules": [
+                {
+                    "pattern": "GIGATRON",
+                    "priority": 0
+                },
+                {
+                    "pattern": "DECATHLON",
+                    "priority": 0
+                }
+            ]
+        },
+        {
+            "name": "Gas",
+            "color": null,
+            "rules": [
+                {
+                    "pattern": "LUKOIL",
+                    "priority": 0
+                },
+                {
+                    "pattern": "OMV",
+                    "priority": 0
+                },
+                {
+                    "pattern": "CORAL",
+                    "priority": 0
+                },
+                {
+                    "pattern": "PETROL",
+                    "priority": 0
+                },
+                {
+                    "pattern": "INA BP",
+                    "priority": 0
+                }
+            ]
+        },
+        {
+            "name": "Groceries",
+            "color": null,
+            "rules": [
+                {
+                    "pattern": "MAXI",
+                    "priority": 0
+                },
+                {
+                    "pattern": "TEMPO",
+                    "priority": 0
+                },
+                {
+                    "pattern": "VERO",
+                    "priority": 0
+                },
+                {
+                    "pattern": "METRO",
+                    "priority": 0
+                },
+                {
+                    "pattern": "IDEA",
+                    "priority": 0
+                },
+                {
+                    "pattern": "MEGA",
+                    "priority": 0
+                },
+                {
+                    "pattern": "MP4",
+                    "priority": 0
+                },
+                {
+                    "pattern": "MP3",
+                    "priority": 0
+                },
+                {
+                    "pattern": "DIS",
+                    "priority": 0
+                },
+                {
+                    "pattern": "MIKROMARKET",
+                    "priority": 0
+                },
+                {
+                    "pattern": "CONAD",
+                    "priority": 0
+                }
+            ]
+        },
+        {
+            "name": "Home & Hardware",
+            "color": null,
+            "rules": [
+                {
+                    "pattern": "OKOV CENTAR",
+                    "priority": 0
+                },
+                {
+                    "pattern": "URADI SAM",
+                    "priority": 0
+                }
+            ]
+        },
+        {
+            "name": "Insurance",
+            "color": null,
+            "rules": [
+                {
+                    "pattern": "OSIGURANJE",
+                    "priority": 0
+                }
+            ]
+        },
+        {
+            "name": "Online Shopping",
+            "color": null,
+            "rules": [
+                {
+                    "pattern": "ALIEXPRESS",
+                    "priority": 0
+                },
+                {
+                    "pattern": "TEMU",
+                    "priority": 0
+                }
+            ]
+        },
+        {
+            "name": "Parking / Tolls",
+            "color": null,
+            "rules": [
+                {
+                    "pattern": "EASYPARK",
+                    "priority": 0
+                },
+                {
+                    "pattern": "JP PUTEVI",
+                    "priority": 0
+                },
+                {
+                    "pattern": "PAYSPOT  DOO*JKP PARKI",
+                    "priority": 0
+                },
+                {
+                    "pattern": "PAYSPOT  DOO*PARKING",
+                    "priority": 0
+                }
+            ]
+        },
+        {
+            "name": "Pet Supplies",
+            "color": null,
+            "rules": [
+                {
+                    "pattern": "PET CENTAR",
+                    "priority": 0
+                },
+                {
+                    "pattern": "VETERINAR",
+                    "priority": 0
+                },
+                {
+                    "pattern": "ZOO.RU",
+                    "priority": 0
+                }
+            ]
+        },
+        {
+            "name": "Pharmacy",
+            "color": null,
+            "rules": [
+                {
+                    "pattern": "APOTEKA",
+                    "priority": 0
+                },
+                {
+                    "pattern": "DR.MAX",
+                    "priority": 0
+                },
+                {
+                    "pattern": "ZELENA APOTEKA",
+                    "priority": 0
+                }
+            ]
+        },
+        {
+            "name": "Restaurants & Cafes",
+            "color": null,
+            "rules": [
+                {
+                    "pattern": "RESTORAN",
+                    "priority": 0
+                },
+                {
+                    "pattern": "TRATTORIA",
+                    "priority": 0
+                },
+                {
+                    "pattern": "RISTORANTE",
+                    "priority": 0
+                },
+                {
+                    "pattern": "GASTRONOMIA",
+                    "priority": 0
+                },
+                {
+                    "pattern": "BURRITO",
+                    "priority": 0
+                },
+                {
+                    "pattern": "GYROS",
+                    "priority": 0
+                },
+                {
+                    "pattern": "BAR TABACCHI",
+                    "priority": 0
+                },
+                {
+                    "pattern": "KANTINA",
+                    "priority": 0
+                }
+            ]
+        },
+        {
+            "name": "Ride-hailing",
+            "color": null,
+            "rules": [
+                {
+                    "pattern": "YANDEX GO",
+                    "priority": 0
+                }
+            ]
+        },
+        {
+            "name": "Subscriptions",
+            "color": null,
+            "rules": [
+                {
+                    "pattern": "GOOGLE *",
+                    "priority": 0
+                },
+                {
+                    "pattern": "APPLE.COM",
+                    "priority": 0
+                },
+                {
+                    "pattern": "ANTHROPIC",
+                    "priority": 0
+                },
+                {
+                    "pattern": "HETZNER",
+                    "priority": 0
+                },
+                {
+                    "pattern": "NAMECHEAP",
+                    "priority": 0
+                },
+                {
+                    "pattern": "GROQ",
+                    "priority": 0
+                }
+            ]
+        },
+        {
+            "name": "Telecom",
+            "color": null,
+            "rules": [
+                {
+                    "pattern": "GLOBALTEL",
+                    "priority": 0
+                },
+                {
+                    "pattern": "SIM PJ",
+                    "priority": 0
+                },
+                {
+                    "pattern": "SIM DOO",
+                    "priority": 0
+                }
+            ]
+        },
+        {
+            "name": "Transfer",
+            "color": null,
+            "rules": []
+        }
+    ]
+}

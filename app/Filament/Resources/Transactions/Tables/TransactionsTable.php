@@ -2,9 +2,15 @@
 
 namespace App\Filament\Resources\Transactions\Tables;
 
+use App\Enums\CategorySource;
 use App\Enums\TransactionType;
 use App\Models\Account;
+use App\Models\Category;
+use Filament\Actions\Action;
 use Filament\Forms\Components\DatePicker;
+use Filament\Forms\Components\Select;
+use Filament\Notifications\Notification;
+use Filament\Support\Icons\Heroicon;
 use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Filters\Filter;
 use Filament\Tables\Filters\SelectFilter;
@@ -32,6 +38,12 @@ class TransactionsTable
                     ->limit(40)
                     ->tooltip(fn ($record) => $record->description)
                     ->toggleable(),
+                TextColumn::make('category.name')
+                    ->label('Category')
+                    ->badge()
+                    ->color('gray')
+                    ->placeholder('Uncategorized')
+                    ->toggleable(),
                 TextColumn::make('amount_cents')
                     ->label('Amount')
                     ->formatStateUsing(fn (int $state, $record) => number_format($state / 100, 2).' '.$record->currency_code)
@@ -50,6 +62,28 @@ class TransactionsTable
                     ->badge()
                     ->color('gray')
                     ->toggleable(),
+            ])
+            ->recordActions([
+                Action::make('categorize')
+                    ->label('Categorize')
+                    ->icon(Heroicon::OutlinedTag)
+                    ->color('gray')
+                    ->form([
+                        Select::make('category_id')
+                            ->label('Category')
+                            ->options(fn () => Category::query()->orderBy('name')->pluck('name', 'id'))
+                            ->searchable()
+                            ->placeholder('Uncategorized'),
+                    ])
+                    ->fillForm(fn ($record) => ['category_id' => $record->category_id])
+                    ->action(function ($record, array $data): void {
+                        $record->update([
+                            'category_id' => $data['category_id'] ?? null,
+                            'category_source' => $data['category_id'] ? CategorySource::Manual : null,
+                        ]);
+
+                        Notification::make()->title('Transaction categorized')->success()->send();
+                    }),
             ])
             ->filters([
                 SelectFilter::make('scope')
@@ -71,6 +105,9 @@ class TransactionsTable
                     ->options(fn () => Account::query()->pluck('description', 'id')),
                 SelectFilter::make('type')
                     ->options(collect(TransactionType::cases())->mapWithKeys(fn (TransactionType $t) => [$t->value => str($t->name)->headline()])),
+                SelectFilter::make('category_id')
+                    ->label('Category')
+                    ->options(fn () => Category::query()->orderBy('name')->pluck('name', 'id')),
                 Filter::make('date')
                     ->schema([
                         DatePicker::make('from')->native(false),
