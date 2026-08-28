@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Offline &middot; Rai Stats</title>
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+    <style>
+        :root { color-scheme: light dark; }
+        body {
+            margin: 0;
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            gap: 0.75rem;
+            font-family: 'Instrument Sans', ui-sans-serif, system-ui, sans-serif;
+            text-align: center;
+            padding: 1.5rem;
+            background: #fffbeb;
+            color: #78350f;
+        }
+        @media (prefers-color-scheme: dark) {
+            body { background: #1c1917; color: #fef3c7; }
+        }
+        img { width: 72px; height: 72px; }
+        h1 { font-size: 1.25rem; margin: 0; }
+        p { margin: 0; opacity: 0.8; }
+        button {
+            margin-top: 0.5rem;
+            padding: 0.5rem 1rem;
+            border: 0;
+            border-radius: 0.5rem;
+            background: #d97706;
+            color: #fff;
+            font: inherit;
+            cursor: pointer;
+        }
+    </style>
+</head>
+<body>
+    <img src="/icons/icon-192.png" alt="">
+    <h1>You're offline</h1>
+    <p>Rai Stats needs a connection to load this page.</p>
+    <button onclick="location.reload()">Try again</button>
+</body>
+</html>
