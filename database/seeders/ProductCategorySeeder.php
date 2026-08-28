@@ -6,10 +6,10 @@ use App\Models\ProductCategory;
 use Illuminate\Database\Seeder;
 
 /**
- * A starter product-category taxonomy for the Moj Maxi section, with a few
+ * A starter product-category taxonomy for the grocery section, with a few
  * obvious keyword rules to get auto-categorisation going. Refine the rules
  * in the Product categories admin resource, then run
- * `php artisan maxi:recategorize-items`.
+ * `php artisan groceries:recategorize-items`.
  */
 class ProductCategorySeeder extends Seeder
 {

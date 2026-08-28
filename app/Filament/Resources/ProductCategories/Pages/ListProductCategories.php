@@ -23,7 +23,7 @@ class ListProductCategories extends ListRecords
                 ->color('gray')
                 ->requiresConfirmation()
                 ->action(function (): void {
-                    Artisan::call('maxi:recategorize-items');
+                    Artisan::call('groceries:recategorize-items');
 
                     Notification::make()
                         ->title('Receipt items recategorized')

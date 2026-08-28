@@ -16,13 +16,16 @@ per account, per person, or across the whole household.
   transactions table, recurring charges detection, and a spender leaderboard.
 - **Transactions** — a searchable, filterable table of every imported
   transaction, scoped to what the logged-in user is allowed to see.
-- **Moj Maxi** — an admin section that syncs the owner's Maxi loyalty
-  invoice history, downloads and parses each eReceipt PDF into fiscal line
-  items, auto-categorises products against a ruleset, and links a receipt to
-  the bank transaction that paid for it. Comes with its own stats page
-  (product-category spend, top products, basket size over time). Only the
-  long-lived Maxi token is stored (encrypted); the password is never
-  persisted.
+- **Groceries** — an admin section that syncs grocery loyalty accounts from
+  multiple providers (**Moj Maxi** and **Metro**), pulls each account's
+  invoice history, itemises every receipt (Maxi from the eReceipt PDF, Metro
+  from a structured articles feed), auto-categorises products against a
+  ruleset, and links a receipt to the bank transaction that paid for it.
+  Comes with its own stats page (product-category spend, top products, basket
+  size over time), filterable by provider. Each account's password is stored
+  encrypted so syncs can re-authenticate on their own — these are low-value
+  loyalty logins, unlike the bank import which never stores a password. Metro
+  access tokens last only ~1 hour and are refreshed automatically.
 - **Users** — admin-managed accounts with `admin` / `user` roles.
 
 ## Stack

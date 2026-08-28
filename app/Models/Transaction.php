@@ -46,11 +46,11 @@ class Transaction extends Model
 
     /**
      * The Moj Maxi receipt linked to this transaction, if one has been
-     * matched (see App\Services\Maxi\ReceiptTransactionMatcher).
+     * matched (see App\Services\Receipts\ReceiptTransactionMatcher).
      */
-    public function maxiReceipt(): HasOne
+    public function groceryReceipt(): HasOne
     {
-        return $this->hasOne(MaxiReceipt::class);
+        return $this->hasOne(GroceryReceipt::class);
     }
 
     /**

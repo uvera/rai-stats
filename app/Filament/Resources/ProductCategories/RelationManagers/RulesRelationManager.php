@@ -2,7 +2,7 @@
 
 namespace App\Filament\Resources\ProductCategories\RelationManagers;
 
-use App\Models\MaxiReceiptItem;
+use App\Models\GroceryReceiptItem;
 use Filament\Actions\CreateAction;
 use Filament\Actions\DeleteAction;
 use Filament\Actions\EditAction;
@@ -24,7 +24,7 @@ class RulesRelationManager extends RelationManager
             ->components([
                 Select::make('example')
                     ->label('Example item (from real receipts)')
-                    ->options(fn () => MaxiReceiptItem::query()->distinct()->orderBy('name')->limit(500)->pluck('name', 'name'))
+                    ->options(fn () => GroceryReceiptItem::query()->distinct()->orderBy('name')->limit(500)->pluck('name', 'name'))
                     ->searchable()
                     ->dehydrated(false)
                     ->live()

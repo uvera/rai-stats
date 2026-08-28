@@ -24,6 +24,6 @@ class ProductCategory extends Model
 
     public function items(): HasMany
     {
-        return $this->hasMany(MaxiReceiptItem::class);
+        return $this->hasMany(GroceryReceiptItem::class);
     }
 }

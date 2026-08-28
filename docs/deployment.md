@@ -87,16 +87,20 @@ php artisan db:seed --class=MerchantCategorySeeder
 php artisan transactions:recategorize
 ```
 
-The Moj Maxi feature has its own product-category taxonomy (separate from the
-merchant categories above). Seed the starter set the same way, then apply it:
+The Groceries feature (Moj Maxi + Metro) has its own product-category
+taxonomy (separate from the merchant categories above). Seed the starter set
+the same way, then apply it:
 
 ```sh
 php artisan db:seed --class=ProductCategorySeeder
-php artisan maxi:recategorize-items
+php artisan groceries:recategorize-items
 ```
 
-Parsing eReceipt PDFs needs no system binary — it uses the pure-PHP
-`smalot/pdfparser` package, pulled in by `composer install`.
+Existing `maxi_*` tables are renamed to `grocery_*` in place by the
+`generalise_maxi_to_grocery` migration and every existing row is backfilled
+with `provider = 'maxi'`, so a normal `php artisan migrate` is all that is
+needed. Parsing Moj Maxi eReceipt PDFs needs no system binary — it uses the
+pure-PHP `smalot/pdfparser` package, pulled in by `composer install`.
 
 If categories/rules were later edited via the admin UI or
 `merchant-categories:import` on this environment and should become the

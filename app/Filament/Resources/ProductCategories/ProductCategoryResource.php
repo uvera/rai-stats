@@ -22,7 +22,7 @@ class ProductCategoryResource extends Resource
 
     protected static string|BackedEnum|null $navigationIcon = Heroicon::OutlinedSquares2x2;
 
-    protected static string|UnitEnum|null $navigationGroup = 'Moj Maxi';
+    protected static string|UnitEnum|null $navigationGroup = 'Groceries';
 
     protected static ?string $navigationLabel = 'Product categories';
 
