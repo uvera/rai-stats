@@ -43,7 +43,7 @@ class GroceryStats extends Page
     public function mount(): void
     {
         $this->filters = [
-            'from' => now()->subMonths(6)->startOfMonth()->format('Y-m-d'),
+            'from' => now()->startOfYear()->format('Y-m-d'),
             'to' => now()->format('Y-m-d'),
             'groceryAccountId' => null,
             'provider' => null,

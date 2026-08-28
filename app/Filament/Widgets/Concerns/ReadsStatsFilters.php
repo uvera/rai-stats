@@ -22,7 +22,7 @@ trait ReadsStatsFilters
     {
         return new TransactionStats(
             userId: $this->userId,
-            from: CarbonImmutable::parse($this->pageFilters['from'] ?? now()->subMonths(6)->startOfMonth()),
+            from: CarbonImmutable::parse($this->pageFilters['from'] ?? now()->startOfYear()),
             to: CarbonImmutable::parse($this->pageFilters['to'] ?? now()),
             period: $this->pageFilters['period'] ?? 'month',
             accountIds: filled($this->pageFilters['accountIds'] ?? null)

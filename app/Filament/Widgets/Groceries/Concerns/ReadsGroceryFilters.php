@@ -19,7 +19,7 @@ trait ReadsGroceryFilters
     protected function groceryStats(): GroceryReceiptStats
     {
         return new GroceryReceiptStats(
-            from: CarbonImmutable::parse($this->pageFilters['from'] ?? now()->subMonths(6)->startOfMonth()),
+            from: CarbonImmutable::parse($this->pageFilters['from'] ?? now()->startOfYear()),
             to: CarbonImmutable::parse($this->pageFilters['to'] ?? now()),
             groceryAccountId: filled($this->pageFilters['groceryAccountId'] ?? null)
                 ? (int) $this->pageFilters['groceryAccountId']

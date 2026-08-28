@@ -42,7 +42,7 @@ abstract class AbstractStatsPage extends Page
     protected function initializeFilters(): void
     {
         $this->filters = [
-            'from' => now()->subMonths(6)->startOfMonth()->format('Y-m-d'),
+            'from' => now()->startOfYear()->format('Y-m-d'),
             'to' => now()->format('Y-m-d'),
             'period' => 'month',
             'accountIds' => [],
