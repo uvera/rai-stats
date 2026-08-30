@@ -3,6 +3,8 @@
 namespace App\Filament\Widgets;
 
 use App\Filament\Widgets\Concerns\ReadsStatsFilters;
+use Filament\Tables\Columns\Layout\Split;
+use Filament\Tables\Columns\Layout\Stack;
 use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Table;
 use Filament\Widgets\TableWidget;
@@ -28,13 +30,21 @@ class RecurringChargesTable extends TableWidget
             // column isn't in the GROUP BY and Postgres rejects it.
             ->defaultKeySort(false)
             ->columns([
-                TextColumn::make('place')->sortable(),
-                TextColumn::make('months')->alignEnd()->sortable(),
-                TextColumn::make('average_cents')
-                    ->label('Avg amount')
-                    ->formatStateUsing(fn ($state) => number_format($state / 100, 2))
-                    ->alignEnd()
-                    ->sortable(),
+                Split::make([
+                    TextColumn::make('place')->sortable(),
+                    Stack::make([
+                        TextColumn::make('average_cents')
+                            ->label('Avg amount')
+                            ->formatStateUsing(fn ($state) => number_format($state / 100, 2))
+                            ->sortable(),
+                        TextColumn::make('months')
+                            ->formatStateUsing(fn ($state) => $state.' months')
+                            ->color('gray')
+                            ->sortable(),
+                    ])
+                        ->alignment('end')
+                        ->grow(false),
+                ]),
             ])
             ->defaultSort('months', 'desc');
     }

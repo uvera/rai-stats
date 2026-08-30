@@ -9,6 +9,8 @@ use Filament\Actions\Action;
 use Filament\Forms\Components\Select;
 use Filament\Resources\RelationManagers\RelationManager;
 use Filament\Schemas\Schema;
+use Filament\Tables\Columns\Layout\Split;
+use Filament\Tables\Columns\Layout\Stack;
 use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Table;
 
@@ -34,27 +36,39 @@ class ItemsRelationManager extends RelationManager
         return $table
             ->defaultSort('line_no')
             ->columns([
-                TextColumn::make('line_no')->label('#')->sortable(),
-                TextColumn::make('name')->label('Item')->wrap()->searchable(),
-                TextColumn::make('quantity')
-                    ->label('Qty')
-                    ->formatStateUsing(fn ($state) => rtrim(rtrim(number_format((float) $state, 3), '0'), '.'))
-                    ->alignEnd(),
-                TextColumn::make('unit_price_cents')
-                    ->label('Unit')
-                    ->formatStateUsing(fn (int $state) => number_format($state / 100, 2))
-                    ->alignEnd(),
-                TextColumn::make('total_cents')
-                    ->label('Total')
-                    ->formatStateUsing(fn (int $state) => number_format($state / 100, 2))
-                    ->alignEnd()
-                    ->sortable(),
-                TextColumn::make('vat_label')->label('VAT')->badge()->placeholder('—'),
-                TextColumn::make('productCategory.name')
-                    ->label('Category')
-                    ->badge()
-                    ->color('gray')
-                    ->placeholder('Uncategorized'),
+                Split::make([
+                    TextColumn::make('line_no')
+                        ->label('#')
+                        ->sortable()
+                        ->grow(false)
+                        ->visibleFrom('sm'),
+                    Stack::make([
+                        TextColumn::make('name')->label('Item')->wrap()->searchable(),
+                        TextColumn::make('productCategory.name')
+                            ->label('Category')
+                            ->badge()
+                            ->color('gray')
+                            ->placeholder('Uncategorized'),
+                    ]),
+                    Stack::make([
+                        TextColumn::make('quantity')
+                            ->label('Qty')
+                            ->formatStateUsing(fn ($state) => 'x'.rtrim(rtrim(number_format((float) $state, 3), '0'), '.')),
+                        TextColumn::make('unit_price_cents')
+                            ->label('Unit')
+                            ->formatStateUsing(fn (int $state) => number_format($state / 100, 2)),
+                        TextColumn::make('vat_label')->label('VAT')->badge()->placeholder('—'),
+                    ])
+                        ->alignment('end')
+                        ->visibleFrom('md')
+                        ->grow(false),
+                    TextColumn::make('total_cents')
+                        ->label('Total')
+                        ->formatStateUsing(fn (int $state) => number_format($state / 100, 2))
+                        ->alignEnd()
+                        ->sortable()
+                        ->grow(false),
+                ]),
             ])
             ->recordActions([
                 Action::make('categorize')

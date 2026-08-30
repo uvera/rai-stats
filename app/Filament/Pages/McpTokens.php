@@ -10,7 +10,10 @@ use Filament\Forms\Components\Select;
 use Filament\Forms\Components\TextInput;
 use Filament\Notifications\Notification;
 use Filament\Pages\Page;
+use Filament\Support\Enums\FontWeight;
 use Filament\Support\Icons\Heroicon;
+use Filament\Tables\Columns\Layout\Split;
+use Filament\Tables\Columns\Layout\Stack;
 use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Concerns\InteractsWithTable;
 use Filament\Tables\Contracts\HasTable;
@@ -51,19 +54,31 @@ class McpTokens extends Page implements HasTable
                 ->where('tokenable_id', auth()->id())
                 ->where('tokenable_type', User::class))
             ->columns([
-                TextColumn::make('name'),
-                TextColumn::make('abilities')
-                    ->label('Scope')
-                    ->formatStateUsing(function (mixed $state): string {
-                        $abilities = is_array($state) ? $state : (json_decode((string) $state, true) ?? []);
+                Split::make([
+                    Stack::make([
+                        TextColumn::make('name')->weight(FontWeight::Medium),
+                        TextColumn::make('abilities')
+                            ->label('Scope')
+                            ->badge()
+                            ->formatStateUsing(function (mixed $state): string {
+                                $abilities = is_array($state) ? $state : (json_decode((string) $state, true) ?? []);
 
-                        return TokenScope::fromAbilities($abilities)?->label() ?? 'Unknown';
-                    }),
-                TextColumn::make('last_used_at')
-                    ->dateTime()
-                    ->placeholder('Never'),
-                TextColumn::make('created_at')
-                    ->dateTime(),
+                                return TokenScope::fromAbilities($abilities)?->label() ?? 'Unknown';
+                            }),
+                    ]),
+                    Stack::make([
+                        TextColumn::make('last_used_at')
+                            ->label('Last used')
+                            ->dateTime()
+                            ->placeholder('Never'),
+                        TextColumn::make('created_at')
+                            ->label('Created')
+                            ->dateTime()
+                            ->color('gray'),
+                    ])
+                        ->alignment('end')
+                        ->grow(false),
+                ]),
             ])
             ->recordActions([
                 Action::make('revoke')

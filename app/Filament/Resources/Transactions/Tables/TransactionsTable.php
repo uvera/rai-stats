@@ -11,6 +11,8 @@ use Filament\Forms\Components\DatePicker;
 use Filament\Forms\Components\Select;
 use Filament\Notifications\Notification;
 use Filament\Support\Icons\Heroicon;
+use Filament\Tables\Columns\Layout\Split;
+use Filament\Tables\Columns\Layout\Stack;
 use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Filters\Filter;
 use Filament\Tables\Filters\SelectFilter;
@@ -24,44 +26,59 @@ class TransactionsTable
         return $table
             ->defaultSort('date', 'desc')
             ->columns([
-                TextColumn::make('date')
-                    ->dateTime('d.m.Y H:i')
-                    ->sortable(),
-                TextColumn::make('account.description')
-                    ->label('Account')
-                    ->description(fn ($record) => $record->account?->number)
-                    ->searchable(),
-                TextColumn::make('place')
-                    ->searchable()
-                    ->wrap(),
-                TextColumn::make('description')
-                    ->limit(40)
-                    ->tooltip(fn ($record) => $record->description)
-                    ->toggleable(),
-                TextColumn::make('category.name')
-                    ->label('Category')
-                    ->badge()
-                    ->color('gray')
-                    ->placeholder('Uncategorized')
-                    ->toggleable(),
-                TextColumn::make('amount_cents')
-                    ->label('Amount')
-                    ->formatStateUsing(fn (int $state, $record) => number_format($state / 100, 2).' '.$record->currency_code)
-                    ->color(fn (int $state) => $state < 0 ? 'danger' : 'success')
-                    ->alignEnd()
-                    ->sortable(),
-                TextColumn::make('type')
-                    ->badge()
-                    ->color(fn (TransactionType $state) => match ($state) {
-                        TransactionType::Reserved => 'gray',
-                        TransactionType::Income, TransactionType::IncomeCash => 'success',
-                        default => 'primary',
-                    }),
-                TextColumn::make('user.name')
-                    ->label('Owner')
-                    ->badge()
-                    ->color('gray')
-                    ->toggleable(),
+                Split::make([
+                    TextColumn::make('date')
+                        ->dateTime('d.m.Y H:i')
+                        ->sortable()
+                        ->grow(false),
+                    Stack::make([
+                        TextColumn::make('place')
+                            ->searchable()
+                            ->wrap(),
+                        TextColumn::make('description')
+                            ->limit(40)
+                            ->tooltip(fn ($record) => $record->description)
+                            ->color('gray')
+                            ->toggleable(),
+                    ]),
+                    Stack::make([
+                        TextColumn::make('account.description')
+                            ->label('Account')
+                            ->description(fn ($record) => $record->account?->number)
+                            ->searchable()
+                            ->icon(Heroicon::OutlinedCreditCard),
+                        TextColumn::make('category.name')
+                            ->label('Category')
+                            ->badge()
+                            ->color('gray')
+                            ->placeholder('Uncategorized')
+                            ->toggleable(),
+                        TextColumn::make('user.name')
+                            ->label('Owner')
+                            ->badge()
+                            ->color('gray')
+                            ->toggleable(),
+                    ])
+                        ->visibleFrom('md')
+                        ->grow(false),
+                    Stack::make([
+                        TextColumn::make('amount_cents')
+                            ->label('Amount')
+                            ->formatStateUsing(fn (int $state, $record) => number_format($state / 100, 2).' '.$record->currency_code)
+                            ->color(fn (int $state) => $state < 0 ? 'danger' : 'success')
+                            ->alignEnd()
+                            ->sortable(),
+                        TextColumn::make('type')
+                            ->badge()
+                            ->color(fn (TransactionType $state) => match ($state) {
+                                TransactionType::Reserved => 'gray',
+                                TransactionType::Income, TransactionType::IncomeCash => 'success',
+                                default => 'primary',
+                            }),
+                    ])
+                        ->alignment('end')
+                        ->grow(false),
+                ]),
             ])
             ->recordActions([
                 Action::make('categorize')
