@@ -40,7 +40,7 @@
                 <x-slot name="heading">Guided import</x-slot>
                 <x-slot name="description">
                     Pick accounts and a year - a Jan&ndash;Jun and a Jul&ndash;Dec range will be queued
-                    for each, skipping whatever's already imported.
+                    for each. Rows that were already imported are skipped automatically on import.
                 </x-slot>
 
                 <form wire:submit="queueGuidedImport" style="max-width: 42rem;">

@@ -13,7 +13,6 @@ use App\Services\Raiffeisen\Data\ReservedTransaction;
 use App\Services\Raiffeisen\Data\Transaction;
 use App\Services\Raiffeisen\Data\TransactionType as RaiffeisenTransactionType;
 use App\Services\Raiffeisen\TransactionImporter;
-use App\Support\DateRange;
 use DateTimeImmutable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
@@ -163,20 +162,5 @@ class TransactionImporterTest extends TestCase
 
         $this->assertSame(1, TransactionModel::excludingReserved()->count());
         $this->assertSame(2, TransactionModel::count());
-    }
-
-    public function test_record_coverage_merges_with_existing_ranges(): void
-    {
-        $account = $this->makeAccount();
-        $importer = new TransactionImporter;
-
-        $importer->recordCoverage($account, new DateRange(new DateTimeImmutable('2026-01-01'), new DateTimeImmutable('2026-01-10')));
-        $importer->recordCoverage($account, new DateRange(new DateTimeImmutable('2026-01-11'), new DateTimeImmutable('2026-01-20')));
-
-        $coverages = $account->importCoverages()->get();
-
-        $this->assertCount(1, $coverages);
-        $this->assertSame('2026-01-01', $coverages[0]->from_date->format('Y-m-d'));
-        $this->assertSame('2026-01-20', $coverages[0]->to_date->format('Y-m-d'));
     }
 }

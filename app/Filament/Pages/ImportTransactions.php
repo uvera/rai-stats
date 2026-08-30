@@ -144,8 +144,8 @@ class ImportTransactions extends Page
     /**
      * Queues a Jan-Jun and a Jul-Dec range for the year, for every selected
      * account - the guided path to a full year's import without having to
-     * pick ranges by hand. Reuses addRange() so existing coverage per half
-     * is still respected and only the missing part gets queued.
+     * pick ranges by hand. Reuses addRange() so the two halves can't overlap
+     * anything already queued in this session.
      */
     public function queueGuidedImport(): void
     {
@@ -248,23 +248,19 @@ class ImportTransactions extends Page
 
         $requested = new DateRange(new DateTimeImmutable($this->fromDate), new DateTimeImmutable($this->toDate));
 
-        $account = Account::where('number', $this->selectedAccountNumber)->first();
-        $existingCoverage = $account
-            ? $account->importCoverages()->get()->map(fn ($c) => new DateRange($c->from_date, $c->to_date))->all()
-            : [];
-
-        // Also account for ranges already queued in this session but not
-        // saved yet, so adding several ranges for the same account in one
-        // sitting can't overlap each other either.
+        // Account for ranges already queued in this session but not saved
+        // yet, so adding several ranges for the same account in one sitting
+        // can't overlap each other. Rows already in the database are left to
+        // the importer's (account_id, dedup_key) de-duplication.
         $queuedForAccount = collect($this->queuedRanges)
             ->where('account_number', $this->selectedAccountNumber)
             ->map(fn ($r) => new DateRange(new DateTimeImmutable($r['from']), new DateTimeImmutable($r['to'])))
             ->all();
 
-        $gaps = DateRangeMerger::subtract($requested, [...$existingCoverage, ...$queuedForAccount]);
+        $gaps = DateRangeMerger::subtract($requested, $queuedForAccount);
 
         if (empty($gaps)) {
-            $this->rangeNotice = 'That whole range is already covered - nothing new to add.';
+            $this->rangeNotice = 'That whole range is already queued - nothing new to add.';
 
             return;
         }
@@ -282,7 +278,7 @@ class ImportTransactions extends Page
         }
 
         $this->rangeNotice = $adjusted
-            ? 'Part of that range is already imported - only the missing part was added.'
+            ? 'Part of that range is already queued - only the missing part was added.'
             : null;
     }
 
@@ -345,8 +341,6 @@ class ImportTransactions extends Page
 
                 $inserted += $importer->importTurnover($account, auth()->id(), $transactions);
                 $inserted += $importer->importReserved($account, auth()->id(), $reserved);
-
-                $importer->recordCoverage($account, $range);
             }
 
             $results[] = [

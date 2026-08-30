@@ -4,8 +4,6 @@ namespace Tests\Feature\Filament;
 
 use App\Filament\Pages\ImportTransactions;
 use App\Jobs\RaiffeisenLoginJob;
-use App\Models\Account;
-use App\Models\ImportCoverage;
 use App\Models\User;
 use App\Support\RaiffeisenImportSession;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -91,61 +89,40 @@ class ImportTransactionsPageTest extends TestCase
         $component->assertSet('errorMessage', 'bad credentials');
     }
 
-    public function test_add_range_trims_against_existing_coverage(): void
+    public function test_add_range_trims_against_ranges_queued_this_session(): void
     {
-        $user = $this->actingUser();
-
-        $account = Account::create([
-            'user_id' => $user->id,
-            'number' => '22222',
-            'description' => 'Test',
-            'currency_code' => 'RSD',
-            'currency_code_numeric' => '941',
-            'product_core_id' => '33',
-        ]);
-
-        ImportCoverage::create([
-            'account_id' => $account->id,
-            'from_date' => '2026-01-01',
-            'to_date' => '2026-01-15',
-        ]);
+        $this->actingUser();
 
         Livewire::test(ImportTransactions::class)
+            ->set('queuedRanges', [
+                ['account_number' => '22222', 'from' => '2026-01-01', 'to' => '2026-01-15'],
+            ])
             ->set('selectedAccountNumber', '22222')
             ->set('fromDate', '2026-01-01')
             ->set('toDate', '2026-01-31')
             ->call('addRange')
             ->assertSet('queuedRanges', [
+                ['account_number' => '22222', 'from' => '2026-01-01', 'to' => '2026-01-15'],
                 ['account_number' => '22222', 'from' => '2026-01-16', 'to' => '2026-01-31'],
             ])
-            ->assertSet('rangeNotice', 'Part of that range is already imported - only the missing part was added.');
+            ->assertSet('rangeNotice', 'Part of that range is already queued - only the missing part was added.');
     }
 
-    public function test_add_range_does_nothing_when_fully_covered(): void
+    public function test_add_range_does_nothing_when_already_queued(): void
     {
-        $user = $this->actingUser();
-
-        $account = Account::create([
-            'user_id' => $user->id,
-            'number' => '33333',
-            'description' => 'Test',
-            'currency_code' => 'RSD',
-            'currency_code_numeric' => '941',
-            'product_core_id' => '33',
-        ]);
-
-        ImportCoverage::create([
-            'account_id' => $account->id,
-            'from_date' => '2026-01-01',
-            'to_date' => '2026-01-31',
-        ]);
+        $this->actingUser();
 
         Livewire::test(ImportTransactions::class)
+            ->set('queuedRanges', [
+                ['account_number' => '33333', 'from' => '2026-01-01', 'to' => '2026-01-31'],
+            ])
             ->set('selectedAccountNumber', '33333')
             ->set('fromDate', '2026-01-10')
             ->set('toDate', '2026-01-20')
             ->call('addRange')
-            ->assertSet('queuedRanges', []);
+            ->assertSet('queuedRanges', [
+                ['account_number' => '33333', 'from' => '2026-01-01', 'to' => '2026-01-31'],
+            ]);
     }
 
     public function test_remove_range(): void

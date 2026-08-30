@@ -18,11 +18,6 @@ class Account extends Model
         return $this->belongsTo(User::class);
     }
 
-    public function importCoverages(): HasMany
-    {
-        return $this->hasMany(ImportCoverage::class);
-    }
-
     public function transactions(): HasMany
     {
         return $this->hasMany(Transaction::class);

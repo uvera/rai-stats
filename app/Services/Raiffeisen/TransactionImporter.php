@@ -5,18 +5,14 @@ namespace App\Services\Raiffeisen;
 use App\Enums\CategorySource;
 use App\Enums\TransactionType;
 use App\Models\Account;
-use App\Models\ImportCoverage;
 use App\Models\Transaction as TransactionModel;
 use App\Services\Raiffeisen\Data\ReservedTransaction;
 use App\Services\Raiffeisen\Data\Transaction;
-use App\Support\DateRange;
-use App\Support\DateRangeMerger;
 use App\Support\MerchantCategorizer;
 
 /**
  * Writes fetched Raiffeisen data into the database, de-duplicating on
- * (account_id, dedup_key) and keeping each account's ImportCoverage rows
- * merged and gap-free.
+ * (account_id, dedup_key).
  */
 class TransactionImporter
 {
@@ -85,28 +81,6 @@ class TransactionImporter
         ], $reserved);
 
         return TransactionModel::query()->insertOrIgnore($rows);
-    }
-
-    /**
-     * Merges $range into the account's existing coverage, replacing any
-     * rows it overlaps or touches with the single merged span.
-     */
-    public function recordCoverage(Account $account, DateRange $range): void
-    {
-        $existing = $account->importCoverages()->get()
-            ->map(fn (ImportCoverage $c) => new DateRange($c->from_date, $c->to_date))
-            ->all();
-
-        $merged = DateRangeMerger::merge([...$existing, $range]);
-
-        $account->importCoverages()->delete();
-
-        foreach ($merged as $coveredRange) {
-            $account->importCoverages()->create([
-                'from_date' => $coveredRange->from,
-                'to_date' => $coveredRange->to,
-            ]);
-        }
     }
 
     private function dedupKey(int $accountId, ?string $bankTransactionId, string $date, int $amountCents, string $place, string $description): string
