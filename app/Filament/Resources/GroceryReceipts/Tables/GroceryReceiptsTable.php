@@ -9,8 +9,6 @@ use App\Models\ProductCategory;
 use Filament\Actions\ViewAction;
 use Filament\Forms\Components\DatePicker;
 use Filament\Tables\Columns\IconColumn;
-use Filament\Tables\Columns\Layout\Split;
-use Filament\Tables\Columns\Layout\Stack;
 use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Filters\Filter;
 use Filament\Tables\Filters\SelectFilter;
@@ -25,53 +23,47 @@ class GroceryReceiptsTable
         return $table
             ->defaultSort('purchased_at', 'desc')
             ->columns([
-                Split::make([
-                    TextColumn::make('purchased_at')
-                        ->label('Purchased')
-                        ->dateTime('d.m.Y H:i')
-                        ->sortable()
-                        ->grow(false),
-                    Stack::make([
-                        TextColumn::make('store_name')
-                            ->label('Store')
-                            ->searchable()
-                            ->description(fn (GroceryReceipt $record) => $record->store_address),
-                        TextColumn::make('provider')
-                            ->badge()
-                            ->formatStateUsing(fn (ReceiptProvider $state) => $state->label())
-                            ->toggleable(),
-                        TextColumn::make('account.label')
-                            ->label('Account')
-                            ->badge()
-                            ->color('gray')
-                            ->toggleable(),
-                        TextColumn::make('match_source')
-                            ->label('Match')
-                            ->badge()
-                            ->placeholder('—')
-                            ->toggleable(),
-                    ]),
-                    Stack::make([
-                        TextColumn::make('items_count')
-                            ->label('Items')
-                            ->counts('items')
-                            ->formatStateUsing(fn ($state) => $state.' items'),
-                        IconColumn::make('transaction_id')
-                            ->label('Linked')
-                            ->boolean()
-                            ->trueIcon('heroicon-o-link')
-                            ->falseIcon('heroicon-o-minus')
-                            ->state(fn (GroceryReceipt $record) => $record->transaction_id !== null),
-                    ])
-                        ->visibleFrom('md')
-                        ->grow(false),
-                    TextColumn::make('total_cents')
-                        ->label('Total')
-                        ->formatStateUsing(fn (int $state, GroceryReceipt $record) => number_format($state / 100, 2).' '.$record->currency_code)
-                        ->alignEnd()
-                        ->sortable()
-                        ->grow(false),
-                ]),
+                TextColumn::make('purchased_at')
+                    ->label('Purchased')
+                    ->dateTime('d.m.Y H:i')
+                    ->sortable(),
+                TextColumn::make('provider')
+                    ->badge()
+                    ->formatStateUsing(fn (ReceiptProvider $state) => $state->label())
+                    ->toggleable()
+                    ->visibleFrom('lg'),
+                TextColumn::make('store_name')
+                    ->label('Store')
+                    ->searchable()
+                    ->description(fn (GroceryReceipt $record) => $record->store_address),
+                TextColumn::make('account.label')
+                    ->label('Account')
+                    ->badge()
+                    ->color('gray')
+                    ->toggleable()
+                    ->visibleFrom('lg'),
+                TextColumn::make('items_count')
+                    ->label('Items')
+                    ->counts('items')
+                    ->visibleFrom('md'),
+                TextColumn::make('total_cents')
+                    ->label('Total')
+                    ->formatStateUsing(fn (int $state, GroceryReceipt $record) => number_format($state / 100, 2).' '.$record->currency_code)
+                    ->alignEnd()
+                    ->sortable(),
+                IconColumn::make('transaction_id')
+                    ->label('Linked')
+                    ->boolean()
+                    ->trueIcon('heroicon-o-link')
+                    ->falseIcon('heroicon-o-minus')
+                    ->state(fn (GroceryReceipt $record) => $record->transaction_id !== null)
+                    ->visibleFrom('md'),
+                TextColumn::make('match_source')
+                    ->label('Match')
+                    ->badge()
+                    ->placeholder('—')
+                    ->toggleable()
+                    ->visibleFrom('xl'),
             ])
             ->filters([
                 SelectFilter::make('provider')
