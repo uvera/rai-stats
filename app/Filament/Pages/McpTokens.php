@@ -47,6 +47,7 @@ class McpTokens extends Page implements HasTable
     public function table(Table $table): Table
     {
         return $table
+            ->stackedOnMobile()
             ->query(fn (): Builder => PersonalAccessToken::query()
                 ->where('tokenable_id', auth()->id())
                 ->where('tokenable_type', User::class))

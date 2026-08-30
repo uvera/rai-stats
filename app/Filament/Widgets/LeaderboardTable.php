@@ -20,6 +20,7 @@ class LeaderboardTable extends TableWidget
     public function table(Table $table): Table
     {
         return $table
+            ->stackedOnMobile()
             ->query(fn () => $this->stats()->leaderboardQuery())
             ->heading('Leaderboard')
             ->paginated(false)

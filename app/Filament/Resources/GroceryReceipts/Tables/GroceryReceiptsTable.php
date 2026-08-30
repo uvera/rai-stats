@@ -21,6 +21,7 @@ class GroceryReceiptsTable
     public static function configure(Table $table): Table
     {
         return $table
+            ->stackedOnMobile()
             ->defaultSort('purchased_at', 'desc')
             ->columns([
                 TextColumn::make('purchased_at')

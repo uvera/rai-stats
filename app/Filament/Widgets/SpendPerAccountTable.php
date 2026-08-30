@@ -18,6 +18,7 @@ class SpendPerAccountTable extends TableWidget
     public function table(Table $table): Table
     {
         return $table
+            ->stackedOnMobile()
             ->query(fn () => $this->stats()->spendPerAccountQuery())
             ->heading('Spend per account')
             ->paginated(false)

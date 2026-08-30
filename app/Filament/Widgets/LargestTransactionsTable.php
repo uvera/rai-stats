@@ -19,6 +19,7 @@ class LargestTransactionsTable extends TableWidget
     public function table(Table $table): Table
     {
         return $table
+            ->stackedOnMobile()
             ->query(fn () => $this->stats()->largestTransactionsQuery())
             ->heading('Largest transactions')
             ->paginated([10, 25, 50])

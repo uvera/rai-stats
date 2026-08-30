@@ -16,6 +16,7 @@ class GroceryAccountsTable
     public static function configure(Table $table): Table
     {
         return $table
+            ->stackedOnMobile()
             ->defaultSort('label')
             ->columns([
                 TextColumn::make('provider')

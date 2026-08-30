@@ -32,6 +32,7 @@ class ItemsRelationManager extends RelationManager
     public function table(Table $table): Table
     {
         return $table
+            ->stackedOnMobile()
             ->defaultSort('line_no')
             ->columns([
                 TextColumn::make('line_no')->label('#')->sortable()->visibleFrom('sm'),

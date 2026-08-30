@@ -18,6 +18,7 @@ class RecurringChargesTable extends TableWidget
     public function table(Table $table): Table
     {
         return $table
+            ->stackedOnMobile()
             ->query(fn () => $this->stats()->recurringChargesQuery())
             ->heading('Recurring charges')
             ->description('Same place, similar amount, 3+ months - a rough heuristic, not exact.')

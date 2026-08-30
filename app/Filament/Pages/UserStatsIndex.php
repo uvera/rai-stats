@@ -31,6 +31,7 @@ class UserStatsIndex extends Page implements HasTable
     public function table(Table $table): Table
     {
         return $table
+            ->stackedOnMobile()
             ->query(User::query())
             ->columns([
                 TextColumn::make('name')

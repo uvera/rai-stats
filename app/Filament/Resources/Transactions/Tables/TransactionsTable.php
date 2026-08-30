@@ -22,6 +22,7 @@ class TransactionsTable
     public static function configure(Table $table): Table
     {
         return $table
+            ->stackedOnMobile()
             ->defaultSort('date', 'desc')
             ->columns([
                 TextColumn::make('date')

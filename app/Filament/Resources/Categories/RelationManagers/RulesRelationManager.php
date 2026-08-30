@@ -45,6 +45,7 @@ class RulesRelationManager extends RelationManager
     public function table(Table $table): Table
     {
         return $table
+            ->stackedOnMobile()
             ->recordTitleAttribute('pattern')
             ->columns([
                 TextColumn::make('pattern')->searchable(),
