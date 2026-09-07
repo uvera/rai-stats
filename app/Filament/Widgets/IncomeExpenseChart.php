@@ -9,6 +9,8 @@ class IncomeExpenseChart extends ChartWidget
 {
     use ReadsStatsFilters;
 
+    protected static bool $isLazy = false;
+
     protected ?string $heading = 'Income vs expense';
 
     protected function getType(): string

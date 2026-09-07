@@ -11,6 +11,8 @@ class StatsOverview extends BaseWidget
 {
     use ReadsStatsFilters;
 
+    protected static bool $isLazy = false;
+
     protected function getStats(): array
     {
         $stats = $this->stats();

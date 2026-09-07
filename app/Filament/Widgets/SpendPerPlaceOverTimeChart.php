@@ -9,6 +9,8 @@ class SpendPerPlaceOverTimeChart extends ChartWidget
 {
     use ReadsStatsFilters;
 
+    protected static bool $isLazy = false;
+
     protected ?string $heading = 'Spend per place over time';
 
     private const COLORS = ['#6366f1', '#f59e0b', '#22c55e', '#ef4444', '#06b6d4'];

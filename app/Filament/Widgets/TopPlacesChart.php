@@ -9,6 +9,8 @@ class TopPlacesChart extends ChartWidget
 {
     use ReadsStatsFilters;
 
+    protected static bool $isLazy = false;
+
     protected ?string $heading = 'Top places';
 
     protected function getType(): string

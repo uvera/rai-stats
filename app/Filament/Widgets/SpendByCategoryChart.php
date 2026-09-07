@@ -9,6 +9,8 @@ class SpendByCategoryChart extends ChartWidget
 {
     use ReadsStatsFilters;
 
+    protected static bool $isLazy = false;
+
     protected ?string $heading = 'Spend by category';
 
     protected function getType(): string
