@@ -3,9 +3,11 @@
 namespace App\Jobs;
 
 use App\Services\Raiffeisen\RaiffeisenClient;
+use App\Services\Raiffeisen\RaiffeisenException;
 use App\Support\RaiffeisenImportSession;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
+use Illuminate\Support\Facades\Log;
 use Throwable;
 
 /**
@@ -72,10 +74,27 @@ class RaiffeisenLoginJob implements ShouldQueue
                     'product_core_id' => $a->productCoreId,
                 ], $accounts),
             ]);
-        } catch (Throwable $e) {
+        } catch (RaiffeisenException $e) {
+            // Thrown by our own client for expected conditions (bad
+            // credentials, 2FA timeout, ...) - safe to show.
+            Log::warning('raiffeisen.login.failed', [
+                'session' => $this->importSessionId,
+                'reason' => $e->getMessage(),
+            ]);
             RaiffeisenImportSession::setState($this->importSessionId, [
                 'status' => 'failed',
                 'message' => $e->getMessage(),
+            ]);
+        } catch (Throwable $e) {
+            // Anything else is unexpected: log it in full, show nothing
+            // that might carry an upstream response body.
+            Log::error('raiffeisen.login.errored', [
+                'session' => $this->importSessionId,
+                'exception' => $e,
+            ]);
+            RaiffeisenImportSession::setState($this->importSessionId, [
+                'status' => 'failed',
+                'message' => 'Login failed unexpectedly. Please try again - if it keeps happening, check the application logs.',
             ]);
         }
     }

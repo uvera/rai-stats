@@ -7,7 +7,9 @@ use App\Services\Raiffeisen\Data\AccountBalance;
 use App\Services\Raiffeisen\Data\LoginResult;
 use App\Services\Raiffeisen\Data\PushLoginResult;
 use App\Services\Raiffeisen\RaiffeisenClient;
+use App\Services\Raiffeisen\RaiffeisenException;
 use App\Support\RaiffeisenImportSession;
+use Illuminate\Support\Facades\Log;
 use Mockery;
 use Mockery\Adapter\Phpunit\MockeryPHPUnitIntegration;
 use Tests\TestCase;
@@ -65,21 +67,45 @@ class RaiffeisenLoginJobTest extends TestCase
         $this->assertSame('ready', RaiffeisenImportSession::getState($sessionId)['status']);
     }
 
-    public function test_failure_is_recorded_and_password_still_consumed(): void
+    public function test_expected_failure_shows_the_domain_message_and_consumes_the_password(): void
     {
         $sessionId = RaiffeisenImportSession::start(1);
         RaiffeisenImportSession::setPassword($sessionId, 'super-secret');
 
         $client = Mockery::mock(RaiffeisenClient::class);
         $client->shouldReceive('login')->once();
-        $client->shouldReceive('loginFont')->once()->andThrow(new \RuntimeException('bad credentials'));
+        $client->shouldReceive('loginFont')->once()
+            ->andThrow(new RaiffeisenException('Login failed - check your username and password.'));
 
         (new RaiffeisenLoginJob($sessionId, 'testuser'))->handle($client);
 
         $state = RaiffeisenImportSession::getState($sessionId);
         $this->assertSame('failed', $state['status']);
-        $this->assertSame('bad credentials', $state['message']);
+        $this->assertSame('Login failed - check your username and password.', $state['message']);
         $this->assertNull(RaiffeisenImportSession::takePassword($sessionId));
+    }
+
+    public function test_unexpected_failure_is_logged_and_shows_a_generic_message(): void
+    {
+        Log::spy();
+
+        $sessionId = RaiffeisenImportSession::start(1);
+        RaiffeisenImportSession::setPassword($sessionId, 'super-secret');
+
+        $client = Mockery::mock(RaiffeisenClient::class);
+        $client->shouldReceive('login')->once();
+        $client->shouldReceive('loginFont')->once()
+            ->andThrow(new \RuntimeException('HTTP 500: <html>...upstream body with a session token...</html>'));
+
+        (new RaiffeisenLoginJob($sessionId, 'testuser'))->handle($client);
+
+        $state = RaiffeisenImportSession::getState($sessionId);
+        $this->assertSame('failed', $state['status']);
+        $this->assertStringNotContainsString('session token', $state['message']);
+        $this->assertStringContainsString('unexpectedly', $state['message']);
+        $this->assertNull(RaiffeisenImportSession::takePassword($sessionId));
+
+        Log::shouldHaveReceived('error')->once();
     }
 
     public function test_missing_password_fails_without_calling_the_client(): void

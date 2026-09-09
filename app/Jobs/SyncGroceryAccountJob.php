@@ -7,11 +7,13 @@ use App\Services\Receipts\Contracts\ProviderClient;
 use App\Services\Receipts\Data\InvoiceSummary;
 use App\Services\Receipts\Data\ProviderToken;
 use App\Services\Receipts\ReceiptAuthException;
+use App\Services\Receipts\ReceiptException;
 use App\Services\Receipts\ReceiptImporter;
 use App\Support\GrocerySyncSession;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
 use Illuminate\Queue\Middleware\WithoutOverlapping;
+use Illuminate\Support\Facades\Log;
 use Throwable;
 
 /**
@@ -83,10 +85,25 @@ class SyncGroceryAccountJob implements ShouldQueue
                 'status' => 'needs_password',
                 'message' => "The {$account->provider->label()} session expired - enter the password to sign in again.",
             ]);
-        } catch (Throwable $e) {
+        } catch (ReceiptException $e) {
+            Log::warning('grocery.sync.failed', [
+                'account' => $this->groceryAccountId,
+                'provider' => $account->provider->value,
+                'reason' => $e->getMessage(),
+            ]);
             GrocerySyncSession::setState($this->syncSessionId, [
                 'status' => 'failed',
                 'message' => $e->getMessage(),
+            ]);
+        } catch (Throwable $e) {
+            Log::error('grocery.sync.errored', [
+                'account' => $this->groceryAccountId,
+                'provider' => $account->provider->value,
+                'exception' => $e,
+            ]);
+            GrocerySyncSession::setState($this->syncSessionId, [
+                'status' => 'failed',
+                'message' => 'Sync failed unexpectedly. Please try again - if it keeps happening, check the application logs.',
             ]);
         }
     }
