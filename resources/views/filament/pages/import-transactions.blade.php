@@ -17,12 +17,29 @@
         </x-filament::section>
     @endif
 
-    @if ($step === 'waiting')
+    @if ($step === 'waiting' || $step === 'importing')
         <x-filament::section>
-            <div class="flex items-center gap-3 text-gray-600 dark:text-gray-300" wire:poll.2s="poll">
+            <div style="display: flex; align-items: center; gap: 0.75rem; color: #4b5563;" wire:poll.2s="poll">
                 <x-filament::loading-indicator class="h-5 w-5" />
                 <span>{{ $waitingMessage }}</span>
             </div>
+
+            @if ($step === 'importing' && count($importResults) > 0)
+                <ul style="margin-top: 1rem;" class="divide-y divide-gray-200 dark:divide-white/10">
+                    @foreach ($importResults as $result)
+                        <li style="display: flex; align-items: center; justify-content: space-between; padding: 0.5rem 0; font-size: 0.875rem;">
+                            <span>{{ $result['description'] }} ({{ $result['account_number'] }})</span>
+                            @if ($result['failed'] ?? false)
+                                <x-filament::badge color="danger">failed</x-filament::badge>
+                            @else
+                                <x-filament::badge :color="$result['inserted'] > 0 ? 'success' : 'gray'">
+                                    {{ $result['inserted'] }} new
+                                </x-filament::badge>
+                            @endif
+                        </li>
+                    @endforeach
+                </ul>
+            @endif
         </x-filament::section>
     @endif
 
@@ -126,9 +143,13 @@
                 @foreach ($importResults as $result)
                     <li class="flex items-center justify-between py-2 text-sm">
                         <span>{{ $result['description'] }} ({{ $result['account_number'] }})</span>
-                        <x-filament::badge :color="$result['inserted'] > 0 ? 'success' : 'gray'">
-                            {{ $result['inserted'] }} new
-                        </x-filament::badge>
+                        @if ($result['failed'] ?? false)
+                            <x-filament::badge color="danger">failed &ndash; see logs</x-filament::badge>
+                        @else
+                            <x-filament::badge :color="$result['inserted'] > 0 ? 'success' : 'gray'">
+                                {{ $result['inserted'] }} new
+                            </x-filament::badge>
+                        @endif
                     </li>
                 @endforeach
             </ul>

@@ -3,11 +3,14 @@
 namespace Tests\Feature\Filament;
 
 use App\Filament\Pages\ImportTransactions;
+use App\Jobs\RaiffeisenImportJob;
 use App\Jobs\RaiffeisenLoginJob;
+use App\Models\Account;
 use App\Models\User;
 use App\Support\RaiffeisenImportSession;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Queue;
+use Livewire\Features\SupportTesting\Testable;
 use Livewire\Livewire;
 use Tests\TestCase;
 
@@ -21,6 +24,25 @@ class ImportTransactionsPageTest extends TestCase
         $this->actingAs($user);
 
         return $user;
+    }
+
+    /**
+     * importSessionId is #[Locked], so tests can't ->set() it - go through
+     * submitCredentials (with a faked queue) to get a legitimately assigned
+     * one, then drive poll() by writing session state directly.
+     *
+     * @return array{0: Testable, 1: string}
+     */
+    private function startedWizard(): array
+    {
+        Queue::fake();
+
+        $component = Livewire::test(ImportTransactions::class)
+            ->set('username', 'raiuser')
+            ->set('password', 'pw')
+            ->call('submitCredentials');
+
+        return [$component, $component->get('importSessionId')];
     }
 
     public function test_submitting_credentials_dispatches_the_login_job_and_clears_the_password(): void
@@ -44,9 +66,7 @@ class ImportTransactionsPageTest extends TestCase
     public function test_poll_transitions_to_select_and_creates_accounts_on_ready(): void
     {
         $this->actingUser();
-
-        $component = Livewire::test(ImportTransactions::class)
-            ->set('importSessionId', $sessionId = RaiffeisenImportSession::start(1));
+        [$component, $sessionId] = $this->startedWizard();
 
         RaiffeisenImportSession::setState($sessionId, [
             'status' => 'ready',
@@ -74,9 +94,10 @@ class ImportTransactionsPageTest extends TestCase
     public function test_poll_refreshes_account_metadata_without_reassigning_ownership(): void
     {
         $owner = User::factory()->create();
-        $importer = $this->actingUser();
+        $this->actingUser();
+        [$component, $sessionId] = $this->startedWizard();
 
-        \App\Models\Account::create([
+        Account::create([
             'user_id' => $owner->id,
             'number' => '11111',
             'description' => 'Old name',
@@ -84,9 +105,6 @@ class ImportTransactionsPageTest extends TestCase
             'currency_code_numeric' => '941',
             'product_core_id' => 'OLD',
         ]);
-
-        $component = Livewire::test(ImportTransactions::class)
-            ->set('importSessionId', $sessionId = RaiffeisenImportSession::start($importer->id));
 
         RaiffeisenImportSession::setState($sessionId, [
             'status' => 'ready',
@@ -114,9 +132,7 @@ class ImportTransactionsPageTest extends TestCase
     public function test_poll_transitions_to_error_on_failure(): void
     {
         $this->actingUser();
-
-        $component = Livewire::test(ImportTransactions::class)
-            ->set('importSessionId', $sessionId = RaiffeisenImportSession::start(1));
+        [$component, $sessionId] = $this->startedWizard();
 
         RaiffeisenImportSession::setState($sessionId, [
             'status' => 'failed',
@@ -127,6 +143,62 @@ class ImportTransactionsPageTest extends TestCase
 
         $component->assertSet('step', 'error');
         $component->assertSet('errorMessage', 'bad credentials');
+    }
+
+    public function test_poll_times_out_a_stuck_login(): void
+    {
+        $this->actingUser();
+        [$component, $sessionId] = $this->startedWizard();
+
+        // Worker never ran: still 'pending', deadline in the past.
+        RaiffeisenImportSession::setState($sessionId, [
+            'status' => 'pending',
+            'poll_deadline' => now()->subMinute()->timestamp,
+        ]);
+
+        $component->call('poll')->assertSet('step', 'error');
+    }
+
+    public function test_run_import_dispatches_the_job_and_enters_the_importing_step(): void
+    {
+        $this->actingUser();
+        [$component, $sessionId] = $this->startedWizard();
+
+        RaiffeisenImportSession::setState($sessionId, ['status' => 'ready', 'cookies' => ['a' => 'b']]);
+
+        $component
+            ->set('queuedRanges', [
+                ['account_number' => '11111', 'from' => '2026-01-01', 'to' => '2026-01-31'],
+            ])
+            ->call('runImport')
+            ->assertSet('step', 'importing')
+            ->assertSet('queuedRanges', []);
+
+        Queue::assertPushed(RaiffeisenImportJob::class);
+    }
+
+    public function test_poll_shows_progress_then_completes_the_import(): void
+    {
+        $this->actingUser();
+        [$component, $sessionId] = $this->startedWizard();
+
+        RaiffeisenImportSession::setState($sessionId, [
+            'status' => 'importing',
+            'import_results' => [
+                ['account_number' => '11111', 'description' => 'A', 'inserted' => 3, 'failed' => false],
+            ],
+        ]);
+        $component->call('poll')
+            ->assertSet('step', 'importing')
+            ->assertCount('importResults', 1);
+
+        RaiffeisenImportSession::setState($sessionId, [
+            'status' => 'done',
+            'import_results' => [
+                ['account_number' => '11111', 'description' => 'A', 'inserted' => 3, 'failed' => false],
+            ],
+        ]);
+        $component->call('poll')->assertSet('step', 'done');
     }
 
     public function test_add_range_trims_against_ranges_queued_this_session(): void

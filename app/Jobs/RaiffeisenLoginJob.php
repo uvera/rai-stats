@@ -98,4 +98,23 @@ class RaiffeisenLoginJob implements ShouldQueue
             ]);
         }
     }
+
+    /**
+     * Reached only if handle() itself throws (rather than the inner catches
+     * handling it) or the job times out / is released - without this the
+     * session state would stay 'pending' and the wizard would poll forever
+     * (until poll()'s own deadline guard trips).
+     */
+    public function failed(?Throwable $e): void
+    {
+        Log::error('raiffeisen.login.errored', [
+            'session' => $this->importSessionId,
+            'exception' => $e,
+        ]);
+
+        RaiffeisenImportSession::setState($this->importSessionId, [
+            'status' => 'failed',
+            'message' => 'Login failed unexpectedly. Please try again - if it keeps happening, check the application logs.',
+        ]);
+    }
 }

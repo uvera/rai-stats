@@ -2,10 +2,9 @@
 
 namespace App\Filament\Pages;
 
+use App\Jobs\RaiffeisenImportJob;
 use App\Jobs\RaiffeisenLoginJob;
 use App\Models\Account;
-use App\Services\Raiffeisen\RaiffeisenClient;
-use App\Services\Raiffeisen\TransactionImporter;
 use App\Support\DateRange;
 use App\Support\DateRangeMerger;
 use App\Support\RaiffeisenImportSession;
@@ -19,6 +18,7 @@ use Filament\Notifications\Notification;
 use Filament\Pages\Page;
 use Filament\Schemas\Schema;
 use Filament\Support\Icons\Heroicon;
+use Livewire\Attributes\Locked;
 
 class ImportTransactions extends Page
 {
@@ -34,12 +34,18 @@ class ImportTransactions extends Page
 
     public ?string $password = null;
 
+    /**
+     * Server-assigned and never a valid thing for the client to change:
+     * whoever holds another user's session id could otherwise have that
+     * user's bank cookies used on their behalf.
+     */
+    #[Locked]
     public ?string $importSessionId = null;
 
     /**
      * Plain arrays, not AccountBalance DTOs - Livewire can't serialize
      * arbitrary objects in public properties. productCoreId/currencyCodeNumeric
-     * are read back from the persisted Account model in runImport() instead.
+     * are read back from the persisted Account model in the import job instead.
      *
      * @var array<int, array{number: string, description: string, currency_code: string}>
      */
@@ -56,7 +62,13 @@ class ImportTransactions extends Page
 
     public ?int $guidedYear = null;
 
-    /** @var array<int, array{account_number: string, from: string, to: string}> */
+    /**
+     * Built only through addRange()/queueRange(). Not #[Locked] (the tests
+     * seed it directly), but the import job re-scopes every account to the
+     * current user, so a tampered entry can't reach another user's data.
+     *
+     * @var array<int, array{account_number: string, from: string, to: string}>
+     */
     public array $queuedRanges = [];
 
     public ?string $rangeNotice = null;
@@ -173,6 +185,12 @@ class ImportTransactions extends Page
 
         $this->importSessionId = RaiffeisenImportSession::start(auth()->id());
         RaiffeisenImportSession::setPassword($this->importSessionId, $this->password);
+        // Login incl. the mobile push wait is capped at ~3 minutes by the
+        // client; give the poller a slightly longer deadline so a worker
+        // that never picked the job up can't leave the wizard spinning.
+        RaiffeisenImportSession::setState($this->importSessionId, [
+            'poll_deadline' => now()->addSeconds(300)->timestamp,
+        ]);
 
         RaiffeisenLoginJob::dispatch($this->importSessionId, $this->username);
 
@@ -183,6 +201,13 @@ class ImportTransactions extends Page
 
         $this->step = 'waiting';
     }
+
+    /**
+     * Statuses the wizard actively polls through, i.e. a background job is
+     * expected to move them along. If one is still set past its deadline the
+     * worker has stalled.
+     */
+    private const POLLED_STATUSES = ['pending', 'awaiting_push', 'importing'];
 
     public function poll(): void
     {
@@ -196,53 +221,96 @@ class ImportTransactions extends Page
             return;
         }
 
-        if ($state['status'] === 'awaiting_push') {
-            $this->waitingMessage = 'Approve the push notification on your phone...';
-        }
+        $status = $state['status'] ?? null;
 
-        if ($state['status'] === 'ready') {
-            // Plain arrays, not AccountBalance DTOs - see RaiffeisenLoginJob
-            // for why (Laravel's cache stores refuse to unserialize
-            // arbitrary objects by default).
-            $fetchedAccounts = $state['accounts'];
-
-            foreach ($fetchedAccounts as $account) {
-                $existing = Account::where('number', $account['number'])->first();
-
-                Account::updateOrCreate(
-                    ['number' => $account['number']],
-                    [
-                        // Ownership is set once, on first import, and never
-                        // reassigned: a jointly-held account stays with
-                        // whoever imported it first. Acceptable for a
-                        // single-family deployment; the other family
-                        // member's transactions still attach with their own
-                        // user_id.
-                        'user_id' => $existing?->user_id ?? auth()->id(),
-                        // Refreshed every import - the bank can rename an
-                        // account or reissue its product_core_id, and a
-                        // stale product_core_id makes the turnover fetch
-                        // silently return nothing.
-                        'description' => $account['description'],
-                        'currency_code' => $account['currency_code'],
-                        'currency_code_numeric' => $account['currency_code_numeric'],
-                        'product_core_id' => $account['product_core_id'],
-                    ]
-                );
-            }
-
-            $this->accounts = array_map(fn (array $a) => [
-                'number' => $a['number'],
-                'description' => $a['description'],
-                'currency_code' => $a['currency_code'],
-            ], $fetchedAccounts);
-
-            $this->selectedAccountNumber = $this->accounts[0]['number'] ?? null;
-            $this->step = 'select';
-        } elseif ($state['status'] === 'failed') {
-            $this->errorMessage = $state['message'];
+        if (in_array($status, self::POLLED_STATUSES, true)
+            && isset($state['poll_deadline'])
+            && now()->timestamp > $state['poll_deadline']) {
+            $this->errorMessage = 'This is taking longer than expected - the background worker may not be running. Please try again.';
             $this->step = 'error';
+
+            return;
         }
+
+        match ($status) {
+            'awaiting_push' => $this->waitingMessage = 'Approve the push notification on your phone...',
+            'ready' => $this->handleAccountsReady($state['accounts']),
+            'importing' => $this->enterImportingStep($state['import_results'] ?? []),
+            'done' => $this->handleImportComplete($state['import_results'] ?? []),
+            'failed' => $this->handleFailure($state['message'] ?? 'Something went wrong. Please try again.'),
+            default => null,
+        };
+    }
+
+    /**
+     * @param  array<int, array<string, mixed>>  $fetchedAccounts
+     */
+    private function handleAccountsReady(array $fetchedAccounts): void
+    {
+        foreach ($fetchedAccounts as $account) {
+            $existing = Account::where('number', $account['number'])->first();
+
+            Account::updateOrCreate(
+                ['number' => $account['number']],
+                [
+                    // Ownership is set once, on first import, and never
+                    // reassigned: a jointly-held account stays with whoever
+                    // imported it first. Acceptable for a single-family
+                    // deployment; the other family member's transactions
+                    // still attach with their own user_id.
+                    'user_id' => $existing?->user_id ?? auth()->id(),
+                    // Refreshed every import - the bank can rename an account
+                    // or reissue its product_core_id, and a stale
+                    // product_core_id makes the turnover fetch silently
+                    // return nothing.
+                    'description' => $account['description'],
+                    'currency_code' => $account['currency_code'],
+                    'currency_code_numeric' => $account['currency_code_numeric'],
+                    'product_core_id' => $account['product_core_id'],
+                ]
+            );
+        }
+
+        $this->accounts = array_map(fn (array $a) => [
+            'number' => $a['number'],
+            'description' => $a['description'],
+            'currency_code' => $a['currency_code'],
+        ], $fetchedAccounts);
+
+        $this->selectedAccountNumber = $this->accounts[0]['number'] ?? null;
+        $this->step = 'select';
+    }
+
+    /**
+     * @param  array<int, array{account_number: string, description: string, inserted: int, failed: bool}>  $results
+     */
+    private function handleImportComplete(array $results): void
+    {
+        $this->importResults = $results;
+        $this->step = 'done';
+
+        $failed = collect($results)->where('failed', true)->count();
+
+        Notification::make()
+            ->title($failed === 0 ? 'Import complete' : "Import finished with {$failed} account(s) failing")
+            ->{$failed === 0 ? 'success' : 'warning'}()
+            ->send();
+    }
+
+    /**
+     * @param  array<int, array<string, mixed>>  $results
+     */
+    private function enterImportingStep(array $results): void
+    {
+        $this->importResults = $results;
+        $this->waitingMessage = 'Importing your transactions...';
+        $this->step = 'importing';
+    }
+
+    private function handleFailure(string $message): void
+    {
+        $this->errorMessage = $message;
+        $this->step = 'error';
     }
 
     public function addRange(): void
@@ -330,62 +398,39 @@ class ImportTransactions extends Page
         $this->queuedRanges = array_values($this->queuedRanges);
     }
 
+    /**
+     * Hands the queued ranges to RaiffeisenImportJob and switches to the
+     * polling 'importing' step. The fetch is dozens of sequential bank
+     * round-trips for a multi-account year - far too long to run inside
+     * this Livewire request, exactly like the login step.
+     */
     public function runImport(): void
     {
         $state = RaiffeisenImportSession::getState($this->importSessionId);
-        $cookies = $state['cookies'] ?? null;
 
-        if (! $cookies) {
+        if (empty($state['cookies'] ?? null)) {
             $this->errorMessage = 'The login session expired - please start over.';
             $this->step = 'error';
 
             return;
         }
 
-        $client = RaiffeisenClient::withCookies($cookies);
-        $importer = new TransactionImporter;
-
-        $byAccount = collect($this->queuedRanges)->groupBy('account_number');
-        $results = [];
-
-        foreach ($byAccount as $accountNumber => $ranges) {
-            $account = Account::where('number', $accountNumber)->firstOrFail();
-
-            $mergedRanges = DateRangeMerger::merge(
-                $ranges->map(fn ($r) => new DateRange(new DateTimeImmutable($r['from']), new DateTimeImmutable($r['to'])))->all()
-            );
-
-            $inserted = 0;
-
-            foreach ($mergedRanges as $range) {
-                $transactions = $client->transactionalAccountTurnover(
-                    $account->product_core_id,
-                    $accountNumber,
-                    $account->currency_code_numeric,
-                    $range->from->format('d.m.Y'),
-                    $range->to->format('d.m.Y'),
-                );
-                $reserved = $client->transactionalAccountReservedFunds($accountNumber);
-
-                $inserted += $importer->importTurnover($account, auth()->id(), $transactions);
-                $inserted += $importer->importReserved($account, auth()->id(), $reserved);
-            }
-
-            $results[] = [
-                'account_number' => $accountNumber,
-                'description' => $account->description,
-                'inserted' => $inserted,
-            ];
+        if ($this->queuedRanges === []) {
+            return;
         }
 
-        $this->importResults = $results;
-        $this->queuedRanges = [];
-        $this->step = 'done';
+        RaiffeisenImportSession::setState($this->importSessionId, [
+            'status' => 'importing',
+            'import_results' => [],
+            'poll_deadline' => now()->addSeconds(900)->timestamp,
+        ]);
 
-        Notification::make()
-            ->title('Import complete')
-            ->success()
-            ->send();
+        RaiffeisenImportJob::dispatch($this->importSessionId, auth()->id(), $this->queuedRanges);
+
+        $this->importResults = [];
+        $this->queuedRanges = [];
+        $this->waitingMessage = 'Importing your transactions...';
+        $this->step = 'importing';
     }
 
     /**
