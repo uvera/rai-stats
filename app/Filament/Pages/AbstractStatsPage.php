@@ -96,7 +96,10 @@ abstract class AbstractStatsPage extends Page
                 DatePicker::make('to')
                     ->label('To')
                     ->native(false)
-                    ->live(),
+                    ->live()
+                    // Reject a reversed range at the form instead of
+                    // silently rendering empty charts.
+                    ->afterOrEqual('from'),
                 Select::make('period')
                     ->label('Period')
                     ->options([

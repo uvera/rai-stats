@@ -57,7 +57,7 @@ class GroceryStats extends Page
             ->columns(4)
             ->components([
                 DatePicker::make('from')->label('From')->native(false)->live(),
-                DatePicker::make('to')->label('To')->native(false)->live(),
+                DatePicker::make('to')->label('To')->native(false)->live()->afterOrEqual('from'),
                 Select::make('provider')
                     ->options(fn () => collect(ReceiptProvider::cases())
                         ->mapWithKeys(fn (ReceiptProvider $p) => [$p->value => $p->label()]))

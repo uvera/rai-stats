@@ -8,6 +8,7 @@ use App\Models\Transaction;
 use App\Models\User;
 use Carbon\CarbonImmutable;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Facades\DB;
 
 /**
@@ -56,6 +57,9 @@ readonly class TransactionStats
 
     private function periodTruncSql(): string
     {
+        // This match() with a default is the injection guard for the raw
+        // date_trunc() below - $this->period reaches here straight from
+        // page-filter state, so it must never be interpolated directly.
         $unit = match ($this->period) {
             'quarter' => 'quarter',
             'year' => 'year',
@@ -149,7 +153,7 @@ readonly class TransactionStats
      * callers (and their assertSame() tests) get the ints the return-type
      * docblocks promise.
      *
-     * @param  \Illuminate\Database\Eloquent\Model  $row
+     * @param  Model  $row
      * @return array<string, mixed>
      */
     private function rowToIntArray($row): array
