@@ -144,8 +144,8 @@ class ImportTransactions extends Page
     /**
      * Queues a Jan-Jun and a Jul-Dec range for the year, for every selected
      * account - the guided path to a full year's import without having to
-     * pick ranges by hand. Reuses addRange() so the two halves can't overlap
-     * anything already queued in this session.
+     * pick ranges by hand. Goes through queueRange() so the two halves
+     * can't overlap anything already queued this session.
      */
     public function queueGuidedImport(): void
     {
@@ -155,16 +155,11 @@ class ImportTransactions extends Page
         ]);
 
         foreach ($this->selectedAccountNumbers as $accountNumber) {
-            $this->selectedAccountNumber = $accountNumber;
-
-            $this->fromDate = "{$this->guidedYear}-01-01";
-            $this->toDate = "{$this->guidedYear}-06-30";
-            $this->addRange();
-
-            $this->fromDate = "{$this->guidedYear}-07-01";
-            $this->toDate = "{$this->guidedYear}-12-31";
-            $this->addRange();
+            $this->queueRange($accountNumber, "{$this->guidedYear}-01-01", "{$this->guidedYear}-06-30");
+            $this->queueRange($accountNumber, "{$this->guidedYear}-07-01", "{$this->guidedYear}-12-31");
         }
+
+        $this->rangeNotice = null;
     }
 
     public function submitCredentials(): void
@@ -258,40 +253,11 @@ class ImportTransactions extends Page
             'toDate' => ['required', 'date', 'after_or_equal:fromDate'],
         ]);
 
-        $requested = new DateRange(new DateTimeImmutable($this->fromDate), new DateTimeImmutable($this->toDate));
-
-        // Account for ranges already queued in this session but not saved
-        // yet, so adding several ranges for the same account in one sitting
-        // can't overlap each other. Rows already in the database are left to
-        // the importer's (account_id, dedup_key) de-duplication.
-        $queuedForAccount = collect($this->queuedRanges)
-            ->where('account_number', $this->selectedAccountNumber)
-            ->map(fn ($r) => new DateRange(new DateTimeImmutable($r['from']), new DateTimeImmutable($r['to'])))
-            ->all();
-
-        $gaps = DateRangeMerger::subtract($requested, $queuedForAccount);
-
-        if (empty($gaps)) {
-            $this->rangeNotice = 'That whole range is already queued - nothing new to add.';
-
-            return;
-        }
-
-        $adjusted = count($gaps) !== 1
-            || $gaps[0]->from != $requested->from
-            || $gaps[0]->to != $requested->to;
-
-        foreach ($gaps as $gap) {
-            $this->queuedRanges[] = [
-                'account_number' => $this->selectedAccountNumber,
-                'from' => $gap->from->format('Y-m-d'),
-                'to' => $gap->to->format('Y-m-d'),
-            ];
-        }
-
-        $this->rangeNotice = $adjusted
-            ? 'Part of that range is already queued - only the missing part was added.'
-            : null;
+        $this->rangeNotice = match ($this->queueRange($this->selectedAccountNumber, $this->fromDate, $this->toDate)) {
+            'duplicate' => 'That whole range is already queued - nothing new to add.',
+            'trimmed' => 'Part of that range is already queued - only the missing part was added.',
+            default => null,
+        };
     }
 
     /**
@@ -302,10 +268,60 @@ class ImportTransactions extends Page
      */
     public function addRangeForAllAccounts(): void
     {
+        $this->validate([
+            'selectedAccountNumber' => ['required', 'string'],
+            'fromDate' => ['required', 'date'],
+            'toDate' => ['required', 'date', 'after_or_equal:fromDate'],
+        ]);
+
         foreach ($this->accounts as $account) {
-            $this->selectedAccountNumber = $account['number'];
-            $this->addRange();
+            $this->queueRange($account['number'], $this->fromDate, $this->toDate);
         }
+
+        $this->rangeNotice = null;
+    }
+
+    /**
+     * Adds [from, to] for one account to the queue, clipped to whatever gap
+     * is left after the ranges already queued this session for that account
+     * (rows already in the database are left to the importer's
+     * (account_id, dedup_key) de-duplication).
+     *
+     * Pure by design: it takes every value as an argument and touches only
+     * $this->queuedRanges - never the form-bound selectedAccountNumber /
+     * fromDate / toDate, so the guided and "all accounts" loops can't leave
+     * the visible form pointing at the last item they iterated.
+     *
+     * @return 'added'|'trimmed'|'duplicate'
+     */
+    private function queueRange(string $accountNumber, string $from, string $to): string
+    {
+        $requested = new DateRange(new DateTimeImmutable($from), new DateTimeImmutable($to));
+
+        $queuedForAccount = collect($this->queuedRanges)
+            ->where('account_number', $accountNumber)
+            ->map(fn ($r) => new DateRange(new DateTimeImmutable($r['from']), new DateTimeImmutable($r['to'])))
+            ->all();
+
+        $gaps = DateRangeMerger::subtract($requested, $queuedForAccount);
+
+        if ($gaps === []) {
+            return 'duplicate';
+        }
+
+        foreach ($gaps as $gap) {
+            $this->queuedRanges[] = [
+                'account_number' => $accountNumber,
+                'from' => $gap->from->format('Y-m-d'),
+                'to' => $gap->to->format('Y-m-d'),
+            ];
+        }
+
+        $adjusted = count($gaps) !== 1
+            || $gaps[0]->from != $requested->from
+            || $gaps[0]->to != $requested->to;
+
+        return $adjusted ? 'trimmed' : 'added';
     }
 
     public function removeRange(int $index): void
