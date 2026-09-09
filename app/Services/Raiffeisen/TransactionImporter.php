@@ -9,6 +9,7 @@ use App\Models\Transaction as TransactionModel;
 use App\Services\Raiffeisen\Data\ReservedTransaction;
 use App\Services\Raiffeisen\Data\Transaction;
 use App\Support\MerchantCategorizer;
+use Illuminate\Support\Collection;
 
 /**
  * Writes fetched Raiffeisen data into the database, de-duplicating on
@@ -50,7 +51,7 @@ class TransactionImporter
             ];
         }, $transactions);
 
-        return TransactionModel::query()->insertOrIgnore($rows);
+        return $this->insertChunked($rows);
     }
 
     /**
@@ -80,7 +81,22 @@ class TransactionImporter
             'updated_at' => now(),
         ], $reserved);
 
-        return TransactionModel::query()->insertOrIgnore($rows);
+        return $this->insertChunked($rows);
+    }
+
+    /**
+     * Postgres caps a statement at 65535 bind parameters; at ~15 columns
+     * per row a single insertOrIgnore() aborts around 4,300 rows, which a
+     * multi-month range on an active account can exceed. Chunk the insert
+     * and sum the per-chunk insert counts.
+     *
+     * @param  array<int, array<string, mixed>>  $rows
+     */
+    private function insertChunked(array $rows): int
+    {
+        return (int) Collection::make($rows)
+            ->chunk(1000)
+            ->sum(fn (Collection $chunk) => TransactionModel::query()->insertOrIgnore($chunk->all()));
     }
 
     private function dedupKey(int $accountId, ?string $bankTransactionId, string $date, int $amountCents, string $place, string $description): string

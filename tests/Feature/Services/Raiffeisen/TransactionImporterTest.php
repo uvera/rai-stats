@@ -84,6 +84,23 @@ class TransactionImporterTest extends TestCase
         ]);
     }
 
+    public function test_imports_more_rows_than_fit_in_one_postgres_statement(): void
+    {
+        $account = $this->makeAccount();
+        $importer = new TransactionImporter;
+
+        // Past the ~4,300-row bind-parameter ceiling of a single insert.
+        $dtos = [];
+        for ($i = 0; $i < 5000; $i++) {
+            $dtos[] = $this->transactionDto("bulk-{$i}", -1000 - $i);
+        }
+
+        $inserted = $importer->importTurnover($account, $account->user_id, $dtos);
+
+        $this->assertSame(5000, $inserted);
+        $this->assertDatabaseCount('transactions', 5000);
+    }
+
     public function test_reimporting_the_same_transactions_does_not_duplicate(): void
     {
         $account = $this->makeAccount();
