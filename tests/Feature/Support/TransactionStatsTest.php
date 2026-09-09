@@ -262,25 +262,36 @@ class TransactionStatsTest extends TestCase
         Transaction::factory()->for($account)->for($me)->create(['amount_cents' => -1000]);
         Transaction::factory()->for($account)->for($someoneElse)->create(['amount_cents' => -4000]);
 
-        $rows = $this->stats($me->id)->leaderboardQuery()->get();
+        // leaderboardQuery() deliberately carries no ORDER BY (Filament adds
+        // its own) - key the rows by name rather than asserting positionally.
+        $rows = $this->stats($me->id)->leaderboardQuery()->get()->keyBy('name');
 
         $this->assertCount(2, $rows);
-        $this->assertSame('Sibling', $rows[0]->name);
-        $this->assertSame(4000, (int) $rows[0]->spend_cents);
+        $this->assertSame(4000, (int) $rows['Sibling']->spend_cents);
+        $this->assertSame(1000, (int) $rows['Me']->spend_cents);
+
+        // ...and it agrees with the array version.
+        $array = collect($this->stats($me->id)->leaderboard())->keyBy('name');
+        $this->assertSame($array['Sibling']['spend_cents'], (int) $rows['Sibling']->spend_cents);
     }
 
-    public function test_largest_transactions_query_orders_by_absolute_amount(): void
+    public function test_largest_transactions_query_returns_the_scoped_rows_for_the_table(): void
     {
         $user = User::factory()->create();
         $account = Account::factory()->for($user)->create();
+        $other = User::factory()->create();
 
         $small = Transaction::factory()->for($account)->for($user)->create(['amount_cents' => -500]);
         $big = Transaction::factory()->for($account)->for($user)->create(['amount_cents' => 15000]);
+        Transaction::factory()->for(Account::factory()->for($other))->for($other)->create(['amount_cents' => -99999]);
 
-        $rows = $this->stats($user->id)->largestTransactionsQuery()->get();
+        // largestTransactionsQuery() carries no ORDER BY - LargestTransactionsTable
+        // applies the ABS() ordering via the amount column's sortable() query.
+        $rows = $this->stats($user->id)->largestTransactionsQuery()
+            ->orderByRaw('ABS(amount_cents) DESC')
+            ->get();
 
-        $this->assertSame($big->id, $rows[0]->id);
-        $this->assertSame($small->id, $rows[1]->id);
+        $this->assertSame([$big->id, $small->id], $rows->pluck('id')->all());
     }
 
     public function test_recurring_charges_query_matches_the_array_version(): void
