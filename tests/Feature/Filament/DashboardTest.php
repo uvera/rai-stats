@@ -36,7 +36,7 @@ class DashboardTest extends TestCase
         $this->assertFalse($ranQuery, 'The Dashboard ran a transactions aggregate - a stats widget leaked onto it.');
     }
 
-    public function test_every_stats_widget_reports_it_cannot_be_viewed_on_the_dashboard(): void
+    public function test_the_panel_registers_no_app_widgets_for_the_dashboard(): void
     {
         $this->actingAs(User::factory()->create());
 
@@ -44,10 +44,6 @@ class DashboardTest extends TestCase
             ->map(fn ($widget) => is_string($widget) ? $widget : $widget->widget)
             ->filter(fn (string $class) => str_starts_with($class, 'App\\Filament\\Widgets\\'));
 
-        $this->assertNotEmpty($ours, 'Expected the app widgets to still be discovered.');
-
-        foreach ($ours as $class) {
-            $this->assertFalse($class::canView(), "{$class} would render on the Dashboard.");
-        }
+        $this->assertTrue($ours->isEmpty(), 'App widgets are registered for discovery: '.$ours->implode(', '));
     }
 }

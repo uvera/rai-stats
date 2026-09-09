@@ -13,23 +13,16 @@ use Filament\Widgets\Concerns\InteractsWithPageFilters;
  * and which user to scope to (passed separately through getWidgetData(),
  * since it's not something the user edits like the other filters).
  *
- * canView() here keeps these widgets off the discovered-widget Dashboard
- * (where they would render unscoped and unfiltered for every user) - they
- * are only ever composed onto the stats pages explicitly, via
- * <x-filament-widgets::widgets>, which renders by class and never consults
- * canView(). ($isLazy = false stays on each widget class: it can't live in
- * a trait, since the parent Widget already defines it.)
+ * These widgets are kept off the Dashboard by not registering them for
+ * discovery at all (see AdminPanelProvider) - not via canView(), which
+ * Filament also checks on every Livewire hydration and would 403 the
+ * stats page the moment a filter changed.
  */
 trait ReadsStatsFilters
 {
     use InteractsWithPageFilters;
 
     public ?int $userId = null;
-
-    public static function canView(): bool
-    {
-        return false;
-    }
 
     protected function stats(): TransactionStats
     {

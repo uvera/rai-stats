@@ -10,18 +10,14 @@ use Filament\Widgets\Concerns\InteractsWithPageFilters;
 
 /**
  * Feeds the grocery stats widgets from the page's filter bar (date range +
- * optional provider + optional account). Mirrors ReadsStatsFilters,
- * including canView() to keep these off the Dashboard, but builds a
- * GroceryReceiptStats so nothing here touches TransactionStats.
+ * optional provider + optional account). Mirrors ReadsStatsFilters - kept
+ * off the Dashboard by not being registered for discovery, not via
+ * canView() - but builds a GroceryReceiptStats so nothing here touches
+ * TransactionStats.
  */
 trait ReadsGroceryFilters
 {
     use InteractsWithPageFilters;
-
-    public static function canView(): bool
-    {
-        return false;
-    }
 
     protected function groceryStats(): GroceryReceiptStats
     {

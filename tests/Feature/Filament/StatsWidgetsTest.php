@@ -32,6 +32,24 @@ class StatsWidgetsTest extends TestCase
         ];
     }
 
+    public function test_widgets_survive_a_livewire_hydration_after_a_filter_change(): void
+    {
+        // Regression: canView(): false used to hide these from the Dashboard
+        // but Filament also checks it on every hydration, so the first
+        // filter change on a stats page 403'd every widget.
+        $user = User::factory()->create();
+        $account = Account::factory()->for($user)->create();
+        Transaction::factory()->for($account)->for($user)->create(['amount_cents' => -1000, 'date' => now()]);
+
+        $this->actingAs($user);
+
+        foreach ([StatsOverview::class, TopPlacesChart::class, LeaderboardTable::class, RecurringChargesTable::class] as $widget) {
+            Livewire::test($widget, ['userId' => $user->id, 'pageFilters' => $this->pageFilters()])
+                ->call('$refresh')
+                ->assertOk();
+        }
+    }
+
     public function test_stats_overview_scopes_the_transaction_count_to_the_given_user(): void
     {
         $me = User::factory()->create();

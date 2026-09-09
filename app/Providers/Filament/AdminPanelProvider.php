@@ -51,7 +51,11 @@ class AdminPanelProvider extends PanelProvider
             ->pages([
                 Dashboard::class,
             ])
-            ->discoverWidgets(in: app_path('Filament/Widgets'), for: 'App\Filament\Widgets')
+            // No discoverWidgets(): the stats/grocery widgets are composed
+            // onto the stats pages by class (see AbstractStatsPage /
+            // GroceryStats), never rendered from discovery. Registering them
+            // put every one - the family leaderboard included - on the
+            // Dashboard, unscoped and unfiltered for every user.
             ->widgets([
                 AccountWidget::class,
                 FilamentInfoWidget::class,
