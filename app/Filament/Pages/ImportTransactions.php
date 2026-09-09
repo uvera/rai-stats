@@ -212,10 +212,22 @@ class ImportTransactions extends Page
             $fetchedAccounts = $state['accounts'];
 
             foreach ($fetchedAccounts as $account) {
-                Account::firstOrCreate(
+                $existing = Account::where('number', $account['number'])->first();
+
+                Account::updateOrCreate(
                     ['number' => $account['number']],
                     [
-                        'user_id' => auth()->id(),
+                        // Ownership is set once, on first import, and never
+                        // reassigned: a jointly-held account stays with
+                        // whoever imported it first. Acceptable for a
+                        // single-family deployment; the other family
+                        // member's transactions still attach with their own
+                        // user_id.
+                        'user_id' => $existing?->user_id ?? auth()->id(),
+                        // Refreshed every import - the bank can rename an
+                        // account or reissue its product_core_id, and a
+                        // stale product_core_id makes the turnover fetch
+                        // silently return nothing.
                         'description' => $account['description'],
                         'currency_code' => $account['currency_code'],
                         'currency_code_numeric' => $account['currency_code_numeric'],
