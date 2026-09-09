@@ -18,11 +18,14 @@ class McpTokensPageTest extends TestCase
         $user = User::factory()->create();
         $this->actingAs($user);
 
+        // callAction(data:) / fillForm() don't reach a header action's
+        // mounted schema on this Page + HasTable combo (Filament 5.7 /
+        // Livewire 4) - set the mounted action data directly.
         Livewire::test(McpTokens::class)
-            ->callAction('createToken', data: [
-                'name' => 'Claude Desktop',
-                'scope' => TokenScope::Self->value,
-            ])
+            ->mountAction('createToken')
+            ->set('mountedActions.0.data.name', 'Claude Desktop')
+            ->set('mountedActions.0.data.scope', TokenScope::Self->value)
+            ->callMountedAction()
             ->assertSet('plainTextToken', fn (?string $token) => filled($token));
 
         $this->assertDatabaseHas('personal_access_tokens', [
