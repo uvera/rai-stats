@@ -65,6 +65,25 @@ class TransactionImporterTest extends TestCase
         $this->assertDatabaseHas('transactions', ['bank_transaction_id' => 'bank-id-1', 'amount_cents' => -2000000]);
     }
 
+    public function test_imports_amounts_larger_than_a_32_bit_integer(): void
+    {
+        $account = $this->makeAccount();
+        $importer = new TransactionImporter;
+
+        // ~50M RSD - past the signed 32-bit ceiling of 2_147_483_647.
+        $bigAmountCents = 5_000_000_000;
+
+        $inserted = $importer->importTurnover($account, $account->user_id, [
+            $this->transactionDto('bank-id-big', $bigAmountCents),
+        ]);
+
+        $this->assertSame(1, $inserted);
+        $this->assertDatabaseHas('transactions', [
+            'bank_transaction_id' => 'bank-id-big',
+            'amount_cents' => $bigAmountCents,
+        ]);
+    }
+
     public function test_reimporting_the_same_transactions_does_not_duplicate(): void
     {
         $account = $this->makeAccount();
