@@ -145,6 +145,21 @@ class ImportTransactionsPageTest extends TestCase
         $component->assertSet('errorMessage', 'bad credentials');
     }
 
+    public function test_poll_ignores_a_session_started_by_another_user(): void
+    {
+        $this->actingUser();
+        [$component, $sessionId] = $this->startedWizard();
+
+        // Someone else's session id somehow ends up in state.
+        RaiffeisenImportSession::setState($sessionId, [
+            'user_id' => User::factory()->create()->id,
+            'status' => 'failed',
+            'message' => 'should not be shown',
+        ]);
+
+        $component->call('poll')->assertSet('step', 'waiting');
+    }
+
     public function test_poll_times_out_a_stuck_login(): void
     {
         $this->actingUser();

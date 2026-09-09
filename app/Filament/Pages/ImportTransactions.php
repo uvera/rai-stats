@@ -217,7 +217,9 @@ class ImportTransactions extends Page
 
         $state = RaiffeisenImportSession::getState($this->importSessionId);
 
-        if (! $state) {
+        // importSessionId is #[Locked], but belt-and-braces: only ever act
+        // on a session this user started.
+        if (! $state || ($state['user_id'] ?? null) !== auth()->id()) {
             return;
         }
 
