@@ -225,6 +225,30 @@ class TransactionStatsTest extends TestCase
         $this->assertSame('Me', $rows[1]['name']);
     }
 
+    public function test_overview_matches_the_individual_aggregate_methods(): void
+    {
+        $user = User::factory()->create();
+        $rsd = Account::factory()->for($user)->create(['currency_code' => 'RSD']);
+        $eur = Account::factory()->for($user)->create(['currency_code' => 'EUR']);
+
+        Transaction::factory()->for($rsd)->for($user)->create(['amount_cents' => -1000, 'currency_code' => 'RSD', 'type' => TransactionType::Pos]);
+        Transaction::factory()->for($rsd)->for($user)->create(['amount_cents' => -3000, 'currency_code' => 'RSD', 'type' => TransactionType::Pos]);
+        Transaction::factory()->for($rsd)->for($user)->create(['amount_cents' => 5000, 'currency_code' => 'RSD', 'type' => TransactionType::Income]);
+        Transaction::factory()->for($rsd)->for($user)->create([
+            'amount_cents' => -2000, 'currency_code' => 'RSD', 'type' => TransactionType::Other, 'place' => 'BANKOMAT NBG',
+        ]);
+        Transaction::factory()->for($eur)->for($user)->create(['amount_cents' => -700, 'currency_code' => 'EUR', 'type' => TransactionType::Pos]);
+
+        $stats = $this->stats($user->id);
+        $overview = $stats->overview();
+
+        $this->assertSame($stats->transactionCount(), $overview['transaction_count']);
+        $this->assertSame($stats->totalIncomeByCurrency(), $overview['income_cents']);
+        $this->assertSame($stats->totalExpenseByCurrency(), $overview['expense_cents']);
+        $this->assertSame($stats->averageSpendByCurrency(), $overview['average_spend_cents']);
+        $this->assertSame($stats->atmWithdrawalTotalsByCurrency(), $overview['atm_withdrawal_cents']);
+    }
+
     public function test_reserved_transactions_are_excluded_from_every_query(): void
     {
         $user = User::factory()->create();

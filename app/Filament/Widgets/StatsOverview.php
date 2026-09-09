@@ -15,15 +15,16 @@ class StatsOverview extends BaseWidget
 
     protected function getStats(): array
     {
-        $stats = $this->stats();
+        // One grouped query for all of the below - see TransactionStats::overview().
+        $overview = $this->stats()->overview();
 
         return [
-            Stat::make('Transactions', (string) $stats->transactionCount())
+            Stat::make('Transactions', (string) $overview['transaction_count'])
                 ->icon(Heroicon::OutlinedListBullet),
-            ...$this->statsPerCurrency('Total income', $stats->totalIncomeByCurrency(), Heroicon::OutlinedArrowTrendingUp, 'success'),
-            ...$this->statsPerCurrency('Total expenses', $stats->totalExpenseByCurrency(), Heroicon::OutlinedArrowTrendingDown, 'danger'),
-            ...$this->statsPerCurrency('Average spend', $stats->averageSpendByCurrency(), Heroicon::OutlinedCalculator, 'danger'),
-            ...$this->statsPerCurrency('ATM / cash withdrawals', $stats->atmWithdrawalTotalsByCurrency(), Heroicon::OutlinedBanknotes, 'warning'),
+            ...$this->statsPerCurrency('Total income', $overview['income_cents'], Heroicon::OutlinedArrowTrendingUp, 'success'),
+            ...$this->statsPerCurrency('Total expenses', $overview['expense_cents'], Heroicon::OutlinedArrowTrendingDown, 'danger'),
+            ...$this->statsPerCurrency('Average spend', $overview['average_spend_cents'], Heroicon::OutlinedCalculator, 'danger'),
+            ...$this->statsPerCurrency('ATM / cash withdrawals', $overview['atm_withdrawal_cents'], Heroicon::OutlinedBanknotes, 'warning'),
         ];
     }
 

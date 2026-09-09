@@ -19,12 +19,12 @@ class GetStatsOverviewTool extends Tool
 
     public function handle(Request $request): Response|ResponseFactory
     {
-        $stats = $this->statsFor($request);
+        $overview = $this->statsFor($request)->overview();
 
         return Response::structured([
-            'transaction_count' => $stats->transactionCount(),
-            'average_spend_cents_by_currency' => $stats->averageSpendByCurrency(),
-            'atm_withdrawal_cents_by_currency' => $stats->atmWithdrawalTotalsByCurrency(),
+            'transaction_count' => $overview['transaction_count'],
+            'average_spend_cents_by_currency' => $overview['average_spend_cents'],
+            'atm_withdrawal_cents_by_currency' => $overview['atm_withdrawal_cents'],
         ]);
     }
 

@@ -15,20 +15,21 @@ class GroceryStatsOverview extends BaseWidget
 
     protected function getStats(): array
     {
-        $stats = $this->groceryStats();
+        // One grouped query for receipts + one for VAT - see GroceryReceiptStats::overview().
+        $overview = $this->groceryStats()->overview();
 
         return [
-            Stat::make('Receipts', (string) $stats->receiptCount())
+            Stat::make('Receipts', (string) $overview['receipt_count'])
                 ->icon(Heroicon::OutlinedReceiptPercent),
-            Stat::make('Total spent (RSD)', number_format($stats->totalSpentCents() / 100, 2))
+            Stat::make('Total spent (RSD)', number_format($overview['total_spent_cents'] / 100, 2))
                 ->icon(Heroicon::OutlinedBanknotes)
                 ->color('danger'),
-            Stat::make('Average basket (RSD)', number_format($stats->averageBasketCents() / 100, 2))
+            Stat::make('Average basket (RSD)', number_format($overview['average_basket_cents'] / 100, 2))
                 ->icon(Heroicon::OutlinedShoppingCart),
-            Stat::make('VAT paid (RSD)', number_format($stats->totalVatCents() / 100, 2))
+            Stat::make('VAT paid (RSD)', number_format($overview['total_vat_cents'] / 100, 2))
                 ->icon(Heroicon::OutlinedCalculator)
                 ->color('warning'),
-            Stat::make('Linked to transactions', $stats->linkedPercentage().'%')
+            Stat::make('Linked to transactions', $overview['linked_percentage'].'%')
                 ->icon(Heroicon::OutlinedLink),
         ];
     }

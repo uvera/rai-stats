@@ -101,6 +101,38 @@ readonly class GroceryReceiptStats
             ->all();
     }
 
+    /**
+     * The five figures behind GroceryStatsOverview in two grouped queries
+     * (receipts, then items for VAT) instead of ~8 separate ones.
+     *
+     * @return array{
+     *     receipt_count: int,
+     *     total_spent_cents: int,
+     *     average_basket_cents: int,
+     *     total_vat_cents: int,
+     *     linked_percentage: int,
+     * }
+     */
+    public function overview(): array
+    {
+        $totals = $this->receipts()
+            ->selectRaw('COUNT(*) as receipt_count')
+            ->selectRaw('COALESCE(SUM(total_cents), 0) as total_spent_cents')
+            ->selectRaw('COUNT(transaction_id) as linked_count')
+            ->first();
+
+        $count = (int) $totals->receipt_count;
+        $spent = (int) $totals->total_spent_cents;
+
+        return [
+            'receipt_count' => $count,
+            'total_spent_cents' => $spent,
+            'average_basket_cents' => $count === 0 ? 0 : (int) round($spent / $count),
+            'total_vat_cents' => $this->totalVatCents(),
+            'linked_percentage' => $count === 0 ? 0 : (int) round((int) $totals->linked_count / $count * 100),
+        ];
+    }
+
     public function receiptCount(): int
     {
         return $this->receipts()->count();
@@ -120,16 +152,16 @@ readonly class GroceryReceiptStats
 
     /**
      * Approximate VAT paid: each item's line total is VAT-inclusive at its
-     * class rate, so the tax portion is total - total / (1 + rate/100).
+     * class rate, so the tax portion is total - total / (1 + rate/100),
+     * rounded per line and summed. Done in SQL rather than loading every
+     * item row into PHP.
      */
     public function totalVatCents(): int
     {
-        return $this->items()
+        return (int) $this->items()
             ->whereNotNull('vat_rate')
-            ->get(['total_cents', 'vat_rate'])
-            ->sum(fn (GroceryReceiptItem $item) => (int) round(
-                $item->total_cents - $item->total_cents / (1 + ((float) $item->vat_rate) / 100)
-            ));
+            ->selectRaw('COALESCE(SUM(ROUND(total_cents - total_cents / (1 + vat_rate / 100.0))), 0) as vat_cents')
+            ->value('vat_cents');
     }
 
     /**

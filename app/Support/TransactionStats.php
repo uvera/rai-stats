@@ -288,6 +288,67 @@ readonly class TransactionStats
     }
 
     /**
+     * The headline figures behind StatsOverview / GetStatsOverviewTool in a
+     * single grouped pass instead of five separate table scans. Each
+     * per-currency map contains only the currencies that actually have a
+     * non-zero value, matching the individual *ByCurrency() methods.
+     *
+     * @return array{
+     *     transaction_count: int,
+     *     income_cents: array<string, int>,
+     *     expense_cents: array<string, int>,
+     *     average_spend_cents: array<string, int>,
+     *     atm_withdrawal_cents: array<string, int>,
+     * }
+     */
+    public function overview(): array
+    {
+        $atmMatch = 'type = ? AND amount_cents < 0 AND ('
+            ."place ILIKE '%bankomat%' OR place ILIKE '%atm%' "
+            ."OR description ILIKE '%atm%' OR description ILIKE '%withdrawal%')";
+
+        $rows = $this->baseQuery()
+            ->groupBy('transactions.currency_code')
+            ->orderBy('transactions.currency_code')
+            ->selectRaw('transactions.currency_code as currency_code')
+            ->selectRaw('COUNT(*) as transaction_count')
+            ->selectRaw('COALESCE(SUM(CASE WHEN amount_cents > 0 THEN amount_cents ELSE 0 END), 0) as income_cents')
+            ->selectRaw('COALESCE(SUM(CASE WHEN amount_cents < 0 THEN -amount_cents ELSE 0 END), 0) as expense_cents')
+            ->selectRaw('COALESCE(ROUND(AVG(CASE WHEN amount_cents < 0 THEN -amount_cents END)), 0) as average_spend_cents')
+            ->selectRaw("COALESCE(SUM(CASE WHEN {$atmMatch} THEN -amount_cents ELSE 0 END), 0) as atm_withdrawal_cents", [TransactionType::Other->value])
+            ->get();
+
+        $count = 0;
+        $income = $expense = $average = $atm = [];
+
+        foreach ($rows as $row) {
+            $currency = $row->currency_code;
+            $count += (int) $row->transaction_count;
+
+            foreach (
+                [
+                    'income' => (int) $row->income_cents,
+                    'expense' => (int) $row->expense_cents,
+                    'average' => (int) $row->average_spend_cents,
+                    'atm' => (int) $row->atm_withdrawal_cents,
+                ] as $key => $value
+            ) {
+                if ($value !== 0) {
+                    ${$key}[$currency] = $value;
+                }
+            }
+        }
+
+        return [
+            'transaction_count' => $count,
+            'income_cents' => $income,
+            'expense_cents' => $expense,
+            'average_spend_cents' => $average,
+            'atm_withdrawal_cents' => $atm,
+        ];
+    }
+
+    /**
      * ATM/cash withdrawals aren't a distinct Raiffeisen transaction type -
      * they come through as type=Other with a telltale place/description.
      * Flagged separately because money leaves the account untracked once
