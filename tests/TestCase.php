@@ -8,38 +8,52 @@ use RuntimeException;
 abstract class TestCase extends BaseTestCase
 {
     /**
-     * Env-based overrides for the test database (.env.testing, phpunit.xml
-     * <env force="true">) are not reliable under DDEV: it injects
-     * DB_DATABASE=db as a real container environment variable, which lands
-     * in $_SERVER and wins over Dotenv's non-destructive safeLoad() and
-     * over PHPUnit's <env> handling (which only ever touches $_ENV/putenv,
-     * never $_SERVER). That gap once let a test's RefreshDatabase run
-     * migrate:fresh against the real dev database and wipe it.
+     * DDEV injects DB_DATABASE=db, CACHE_STORE=database and
+     * SESSION_DRIVER=database into the container as real environment
+     * variables. Those land in $_SERVER, where they beat both Dotenv's
+     * non-destructive safeLoad() and PHPUnit's <env> handling (which only
+     * ever touches $_ENV / putenv, never $_SERVER) - so the suite would
+     * otherwise run against the real dev database, the real database cache
+     * table, and the real sessions table.
      *
-     * This is the one place nothing else can silently override: it runs
-     * right after the app boots and before RefreshDatabase gets a chance to
-     * touch anything, so the database name is pinned here in code, then
-     * verified - if it's still not "db_test" for any reason, abort hard
-     * instead of letting a migration run against the wrong database.
+     * The database name gap once let a RefreshDatabase run migrate:fresh
+     * against the dev database and wipe it. The cache/session gap is
+     * subtler: the database cache and session stores issue their own writes
+     * mid-request, and on Postgres a write that conflicts (an expired-row
+     * delete, the rate limiter's duplicate-key insert, ...) aborts
+     * RefreshDatabase's wrapping transaction - so the acting user and
+     * everything else the test created silently vanishes part-way through.
+     * That bit every Filament/Livewire component test: Livewire 4's
+     * checksum guard hits the RateLimiter on the first ->set()/->call(),
+     * the RateLimiter had been resolved against the database cache during
+     * boot, and that first hit killed the transaction.
+     *
+     * Fix it at the source: rewrite the variables in every place env()
+     * reads from ($_SERVER, $_ENV, putenv) before the framework boots, so
+     * config() sees the test values from the start and nothing - the
+     * RateLimiter singleton included - ever captures a database-backed
+     * store. The config()/purge() pins in createApplication() are
+     * belt-and-braces, plus a hard abort if the database name is somehow
+     * still wrong.
      */
+    protected function setUp(): void
+    {
+        self::pinTestEnvironment();
+
+        parent::setUp();
+    }
+
     public function createApplication()
     {
+        self::pinTestEnvironment();
+
         $app = parent::createApplication();
 
         $app['config']->set('database.connections.pgsql.database', 'db_test');
-
-        // Same DDEV problem as the database name: the container injects
-        // CACHE_STORE=database as a real env var that wins over phpunit.xml's
-        // <env force="true">. The database cache store issues its own writes
-        // which, inside RefreshDatabase's wrapping transaction on Postgres,
-        // can abort it and make later reads in the same test see nothing.
-        // Pin the in-memory store phpunit.xml already asks for.
         $app['config']->set('cache.default', 'array');
+        $app['config']->set('session.driver', 'array');
         $app['cache']->forgetDriver('array');
 
-        // A connection may already have been resolved (and cached) during
-        // boot with the pre-override config - purge it so the next
-        // connection() call re-resolves using the value just set above.
         $app['db']->purge('pgsql');
 
         $database = $app['db']->connection()->getDatabaseName();
@@ -53,5 +67,20 @@ abstract class TestCase extends BaseTestCase
         }
 
         return $app;
+    }
+
+    private static function pinTestEnvironment(): void
+    {
+        $overrides = [
+            'DB_DATABASE' => 'db_test',
+            'CACHE_STORE' => 'array',
+            'SESSION_DRIVER' => 'array',
+        ];
+
+        foreach ($overrides as $key => $value) {
+            $_SERVER[$key] = $value;
+            $_ENV[$key] = $value;
+            putenv("{$key}={$value}");
+        }
     }
 }
