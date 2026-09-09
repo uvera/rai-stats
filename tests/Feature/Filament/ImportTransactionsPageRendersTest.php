@@ -12,7 +12,7 @@ class ImportTransactionsPageRendersTest extends TestCase
 
     public function test_the_page_renders_for_an_authenticated_user(): void
     {
-        $user = User::factory()->create();
+        $user = User::factory()->withMfa()->create();
 
         $response = $this->actingAs($user)->get('/admin/import-transactions');
 

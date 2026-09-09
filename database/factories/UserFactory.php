@@ -48,4 +48,14 @@ class UserFactory extends Factory
     {
         return $this->state(['role' => UserRole::Admin]);
     }
+
+    /**
+     * App-based multi-factor auth is required panel-wide (see
+     * AdminPanelProvider), so a user needs an authenticator secret before
+     * any panel page will render over a real HTTP request.
+     */
+    public function withMfa(): static
+    {
+        return $this->state(['app_authentication_secret' => 'JBSWY3DPEHPK3PXP']);
+    }
 }
