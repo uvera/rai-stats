@@ -3,7 +3,8 @@
         <x-filament::section>
             <x-slot name="description">
                 Enter your Raiffeisen (RaiOnline) internet banking credentials. Your password is
-                used only for this import and is never stored.
+                used only for this import: it is encrypted, held for a few minutes at most, and
+                deleted the moment the login runs.
             </x-slot>
 
             <form wire:submit="submitCredentials" class="max-w-md" style="max-width: 28rem;">
