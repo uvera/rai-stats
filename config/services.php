@@ -35,4 +35,11 @@ return [
         ],
     ],
 
+    'raiffeisen' => [
+        // When true, RaiffeisenClient logs the raw SignalR handshake
+        // (connection tokens, the pre-2FA ticket, Set-Cookie headers) at
+        // debug level. Off by default - only enable to debug a login flow.
+        'trace' => env('RAIFFEISEN_TRACE', false),
+    ],
+
 ];

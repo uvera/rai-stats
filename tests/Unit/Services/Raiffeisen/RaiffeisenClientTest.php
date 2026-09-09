@@ -218,6 +218,29 @@ class RaiffeisenClientTest extends TestCase
         $this->assertSame('push-content', $result->pushRequestContent);
     }
 
+    public function test_handshake_secrets_are_not_logged_unless_tracing_is_enabled(): void
+    {
+        config()->set('services.raiffeisen.trace', false);
+
+        $log = \Illuminate\Support\Facades\Log::spy();
+
+        $client = $this->clientForPushFlow([
+            new Response(200, [], json_encode(['ConnectionToken' => 'super-secret-token', 'ConnectionId' => 'id', 'ProtocolVersion' => '2.1'])),
+            new Response(200, [], ''),
+            new Response(200, [], ''),
+        ], "data: initialized\n".'data: '.json_encode([
+            'M' => [[
+                'H' => 'ibankinghub',
+                'M' => 'LoginUPRequestApproved',
+                'A' => [['Status' => 'APPROVED', 'RequestId' => 'r', 'FirstStepTicket' => 't', 'PushRequestContent' => 'p']],
+            ]],
+        ])."\n");
+
+        $client->requestLoginPush('ticket-123', 'testuser', timeoutSeconds: 5);
+
+        $log->shouldNotHaveReceived('debug');
+    }
+
     public function test_push_flow_throws_on_rejected_status(): void
     {
         $sseBody = implode('', [

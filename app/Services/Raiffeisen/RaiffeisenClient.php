@@ -76,6 +76,18 @@ class RaiffeisenClient
         return $this->cookieJar->toArray();
     }
 
+    /**
+     * SignalR handshake tracing. These payloads carry the connection token,
+     * the pre-2FA ticket and raw Set-Cookie headers, so they are silenced
+     * unless RAIFFEISEN_TRACE is explicitly enabled to debug a login.
+     */
+    private function trace(string $event, array $context = []): void
+    {
+        if (config('services.raiffeisen.trace')) {
+            Log::debug($event, $context);
+        }
+    }
+
     public function login(): void
     {
         $this->http->get(self::ORIGIN.'/Retail/Home/Login');
@@ -119,10 +131,10 @@ class RaiffeisenClient
     public function requestLoginPush(string $ticket, string $username, int $timeoutSeconds = 180): PushLoginResult
     {
         $token = $this->signalRNegotiate();
-        Log::debug('raiffeisen.signalr.negotiate.ok', ['token_prefix' => substr($token, 0, 12)]);
+        $this->trace('raiffeisen.signalr.negotiate.ok', ['token_prefix' => substr($token, 0, 12)]);
 
         $stream = $this->signalRConnectStream($token);
-        Log::debug('raiffeisen.signalr.connect.opened');
+        $this->trace('raiffeisen.signalr.connect.opened');
 
         $deadline = microtime(true) + $timeoutSeconds;
         $buffer = '';
@@ -144,7 +156,7 @@ class RaiffeisenClient
                     }
 
                     if (trim($line) !== '') {
-                        Log::debug('raiffeisen.signalr.line.ignored', ['line' => $line]);
+                        $this->trace('raiffeisen.signalr.line.ignored', ['line' => $line]);
                     }
                 }
 
@@ -172,7 +184,7 @@ class RaiffeisenClient
                 throw new RaiffeisenException('SignalR stream closed before becoming ready');
             }
 
-            Log::debug('raiffeisen.signalr.ready.candidate', ['payload' => $payload]);
+            $this->trace('raiffeisen.signalr.ready.candidate', ['payload' => $payload]);
 
             if (trim($payload) === 'initialized') {
                 break;
@@ -184,13 +196,13 @@ class RaiffeisenClient
             }
         }
 
-        Log::debug('raiffeisen.signalr.ready');
+        $this->trace('raiffeisen.signalr.ready');
 
         $startResponse = $this->signalRStart($token);
-        Log::debug('raiffeisen.signalr.start.response', ['status' => $startResponse->getStatusCode(), 'body' => (string) $startResponse->getBody()]);
+        $this->trace('raiffeisen.signalr.start.response', ['status' => $startResponse->getStatusCode(), 'body' => (string) $startResponse->getBody()]);
 
         $sendResponse = $this->signalRSend($token, $ticket, $username);
-        Log::debug('raiffeisen.signalr.send.response', ['status' => $sendResponse->getStatusCode(), 'body' => (string) $sendResponse->getBody()]);
+        $this->trace('raiffeisen.signalr.send.response', ['status' => $sendResponse->getStatusCode(), 'body' => (string) $sendResponse->getBody()]);
 
         while (true) {
             $payload = $nextDataLine();
@@ -204,12 +216,12 @@ class RaiffeisenClient
 
             $envelope = json_decode($payload, true);
             if (! is_array($envelope)) {
-                Log::debug('raiffeisen.signalr.push.line.unparsed', ['payload' => $payload]);
+                $this->trace('raiffeisen.signalr.push.line.unparsed', ['payload' => $payload]);
 
                 continue;
             }
 
-            Log::debug('raiffeisen.signalr.push.line', ['envelope' => $envelope]);
+            $this->trace('raiffeisen.signalr.push.line', ['envelope' => $envelope]);
 
             if (! empty($envelope['E'])) {
                 throw new RaiffeisenException("SignalR hub error: {$envelope['E']}");
@@ -366,7 +378,7 @@ class RaiffeisenClient
         }
 
         $data = json_decode($response->getBody()->getContents(), true);
-        Log::debug('raiffeisen.signalr.negotiate.body', ['body' => $data]);
+        $this->trace('raiffeisen.signalr.negotiate.body', ['body' => $data]);
         $token = $data['ConnectionToken'] ?? '';
 
         if ($token === '') {
@@ -407,7 +419,7 @@ class RaiffeisenClient
             $dummyRequest->getHeaderLine('Cookie'),
         );
 
-        Log::debug('raiffeisen.signalr.connect.response', [
+        $this->trace('raiffeisen.signalr.connect.response', [
             'status' => $stream->statusCode,
             'headers' => $stream->responseHeaders,
         ]);
