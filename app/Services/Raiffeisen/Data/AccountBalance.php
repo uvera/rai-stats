@@ -3,6 +3,7 @@
 namespace App\Services\Raiffeisen\Data;
 
 use App\Services\Raiffeisen\Money;
+use App\Services\Raiffeisen\RaiffeisenException;
 use DateTimeImmutable;
 
 readonly class AccountBalance
@@ -25,8 +26,20 @@ readonly class AccountBalance
      */
     public static function fromRow(array $row): self
     {
+        if (count($row) < 15) {
+            throw RaiffeisenException::malformedRow('account balance', $row, 'expected at least 15 fields');
+        }
+
         $lastAmount = $row[6] === '' ? null : Money::toCents($row[6]);
-        $lastDate = $row[7] === '' ? null : DateTimeImmutable::createFromFormat('d.m.Y H:i:s', $row[7]);
+
+        $lastDate = null;
+        if ($row[7] !== '') {
+            $lastDate = DateTimeImmutable::createFromFormat('d.m.Y H:i:s', (string) $row[7]);
+
+            if ($lastDate === false) {
+                throw RaiffeisenException::malformedRow('account balance', $row, "unparseable date \"{$row[7]}\"");
+            }
+        }
 
         return new self(
             number: $row[1],

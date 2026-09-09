@@ -3,6 +3,7 @@
 namespace App\Services\Raiffeisen\Data;
 
 use App\Services\Raiffeisen\Money;
+use App\Services\Raiffeisen\RaiffeisenException;
 use DateTimeImmutable;
 
 readonly class Transaction
@@ -26,6 +27,10 @@ readonly class Transaction
      */
     public static function fromRow(array $row): self
     {
+        if (count($row) < 14) {
+            throw RaiffeisenException::malformedRow('turnover', $row, 'expected at least 14 fields');
+        }
+
         $creditAmount = (string) $row[8];
         $debitAmount = (string) $row[9];
 
@@ -42,10 +47,16 @@ readonly class Transaction
             $amountCents = Money::toCents($debitAmount);
         }
 
+        $date = DateTimeImmutable::createFromFormat('d.m.Y H:i:s', (string) $row[3]);
+
+        if ($date === false) {
+            throw RaiffeisenException::malformedRow('turnover', $row, "unparseable date \"{$row[3]}\"");
+        }
+
         return new self(
             currencyCodeNumeric: $row[1],
             currencyCode: $row[2],
-            date: DateTimeImmutable::createFromFormat('d.m.Y H:i:s', $row[3]),
+            date: $date,
             place: $row[6],
             reference: $row[7],
             amountCents: $amountCents,

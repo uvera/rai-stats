@@ -3,6 +3,7 @@
 namespace App\Services\Raiffeisen\Data;
 
 use App\Services\Raiffeisen\Money;
+use App\Services\Raiffeisen\RaiffeisenException;
 use DateTimeImmutable;
 
 readonly class ReservedTransaction
@@ -21,8 +22,18 @@ readonly class ReservedTransaction
      */
     public static function fromRow(array $row): self
     {
+        if (count($row) < 6) {
+            throw RaiffeisenException::malformedRow('reserved funds', $row, 'expected at least 6 fields');
+        }
+
+        $date = DateTimeImmutable::createFromFormat('d.m.Y H:i:s', (string) $row[1]);
+
+        if ($date === false) {
+            throw RaiffeisenException::malformedRow('reserved funds', $row, "unparseable date \"{$row[1]}\"");
+        }
+
         return new self(
-            date: DateTimeImmutable::createFromFormat('d.m.Y H:i:s', $row[1]),
+            date: $date,
             place: $row[2],
             amountCents: -Money::toCents($row[3]),
             currencyCode: $row[4],
