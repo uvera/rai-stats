@@ -22,8 +22,8 @@ readonly class Transaction
 
     /**
      * @param  array<int, mixed>  $row  A single transaction row from
-     *                                   GetTransactionalAccountTurnover, indexed
-     *                                   exactly as the bank returns it.
+     *                                  GetTransactionalAccountTurnover, indexed
+     *                                  exactly as the bank returns it.
      */
     public static function fromRow(array $row): self
     {

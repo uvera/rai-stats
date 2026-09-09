@@ -18,7 +18,7 @@ readonly class ReservedTransaction
 
     /**
      * @param  array<int, string>  $row  A single row from
-     *                                    GetTransactionalAccountReservedFunds.
+     *                                   GetTransactionalAccountReservedFunds.
      */
     public static function fromRow(array $row): self
     {

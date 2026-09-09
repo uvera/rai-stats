@@ -9,6 +9,7 @@ use GuzzleHttp\Client;
 use GuzzleHttp\Handler\MockHandler;
 use GuzzleHttp\HandlerStack;
 use GuzzleHttp\Psr7\Response;
+use Illuminate\Support\Facades\Log;
 use Tests\TestCase;
 
 class RaiffeisenClientTest extends TestCase
@@ -222,7 +223,7 @@ class RaiffeisenClientTest extends TestCase
     {
         config()->set('services.raiffeisen.trace', false);
 
-        $log = \Illuminate\Support\Facades\Log::spy();
+        $log = Log::spy();
 
         $client = $this->clientForPushFlow([
             new Response(200, [], json_encode(['ConnectionToken' => 'super-secret-token', 'ConnectionId' => 'id', 'ProtocolVersion' => '2.1'])),

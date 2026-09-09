@@ -22,7 +22,7 @@ readonly class AccountBalance
 
     /**
      * @param  array<int, string>  $row  A single row from GetAllAccountBalance,
-     *                                    indexed exactly as the bank returns it.
+     *                                   indexed exactly as the bank returns it.
      */
     public static function fromRow(array $row): self
     {
