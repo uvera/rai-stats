@@ -78,7 +78,7 @@ readonly class TransactionStats
             ->selectRaw('COALESCE(SUM(CASE WHEN amount_cents > 0 THEN amount_cents ELSE 0 END), 0) as income_cents')
             ->orderByDesc('spend_cents')
             ->get()
-            ->map(fn ($row) => $row->toArray())
+            ->map(fn ($row) => $this->rowToIntArray($row))
             ->all();
     }
 
@@ -142,6 +142,34 @@ readonly class TransactionStats
             ->havingRaw('COALESCE(STDDEV(-amount_cents), 0) <= AVG(-amount_cents) * 0.15');
     }
 
+    /**
+     * Postgres returns SUM() over a bigint column as `numeric`, which PDO
+     * hands back as a string - so every aggregate cents/count/id column
+     * comes off a raw ->get() as a string. Normalise those back to int so
+     * callers (and their assertSame() tests) get the ints the return-type
+     * docblocks promise.
+     *
+     * @param  \Illuminate\Database\Eloquent\Model  $row
+     * @return array<string, mixed>
+     */
+    private function rowToIntArray($row): array
+    {
+        $array = $row->toArray();
+
+        foreach ($array as $key => $value) {
+            $isCountish = str_ends_with($key, '_cents')
+                || str_ends_with($key, '_count')
+                || str_ends_with($key, '_id')
+                || $key === 'months';
+
+            if ($isCountish && is_numeric($value)) {
+                $array[$key] = (int) $value;
+            }
+        }
+
+        return $array;
+    }
+
     private function constrainTransactions(Builder $query): Builder
     {
         return $query
@@ -176,7 +204,7 @@ readonly class TransactionStats
             ->orderByDesc('spend_cents')
             ->limit($limit)
             ->get()
-            ->map(fn ($row) => $row->toArray())
+            ->map(fn ($row) => $this->rowToIntArray($row))
             ->all();
     }
 
@@ -196,7 +224,7 @@ readonly class TransactionStats
             ->selectRaw('SUM(-transactions.amount_cents) as spend_cents, COUNT(*) as transaction_count')
             ->orderByDesc('spend_cents')
             ->get()
-            ->map(fn ($row) => $row->toArray())
+            ->map(fn ($row) => $this->rowToIntArray($row))
             ->all();
     }
 
@@ -251,7 +279,7 @@ readonly class TransactionStats
             ->selectRaw('COALESCE(SUM(amount_cents), 0) as net_cents')
             ->orderBy('period')
             ->get()
-            ->map(fn ($row) => $row->toArray())
+            ->map(fn ($row) => $this->rowToIntArray($row))
             ->all();
     }
 
@@ -402,7 +430,7 @@ readonly class TransactionStats
             ->selectRaw('COALESCE(SUM(CASE WHEN amount_cents > 0 THEN amount_cents ELSE 0 END), 0) as income_cents')
             ->orderByDesc('spend_cents')
             ->get()
-            ->map(fn ($row) => $row->toArray())
+            ->map(fn ($row) => $this->rowToIntArray($row))
             ->all();
     }
 }
