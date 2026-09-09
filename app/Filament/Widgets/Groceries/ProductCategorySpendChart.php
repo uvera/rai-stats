@@ -9,6 +9,8 @@ class ProductCategorySpendChart extends ChartWidget
 {
     use ReadsGroceryFilters;
 
+    protected static bool $isLazy = false;
+
     protected ?string $heading = 'Spend by product category';
 
     protected function getType(): string

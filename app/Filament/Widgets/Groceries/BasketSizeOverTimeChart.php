@@ -9,6 +9,8 @@ class BasketSizeOverTimeChart extends ChartWidget
 {
     use ReadsGroceryFilters;
 
+    protected static bool $isLazy = false;
+
     protected ?string $heading = 'Basket size over time';
 
     protected function getType(): string

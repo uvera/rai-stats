@@ -9,6 +9,8 @@ class TopProductsChart extends ChartWidget
 {
     use ReadsGroceryFilters;
 
+    protected static bool $isLazy = false;
+
     protected ?string $heading = 'Top products by spend';
 
     protected function getType(): string

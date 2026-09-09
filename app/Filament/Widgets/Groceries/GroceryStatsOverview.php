@@ -11,6 +11,8 @@ class GroceryStatsOverview extends BaseWidget
 {
     use ReadsGroceryFilters;
 
+    protected static bool $isLazy = false;
+
     protected function getStats(): array
     {
         $stats = $this->groceryStats();
