@@ -186,6 +186,39 @@ class TransactionImporterTest extends TestCase
         $this->assertDatabaseHas('transactions', ['type' => TransactionType::Reserved->value]);
     }
 
+    public function test_reimporting_reserved_funds_replaces_the_previous_snapshot(): void
+    {
+        $account = $this->makeAccount();
+        $importer = new TransactionImporter;
+
+        $importer->importReserved($account, $account->user_id, [
+            new ReservedTransaction(new DateTimeImmutable('2026-01-15'), 'Hold A', -5000, 'RSD', '941'),
+            new ReservedTransaction(new DateTimeImmutable('2026-01-16'), 'Hold B', -2500, 'RSD', '941'),
+        ]);
+
+        // Next sync: Hold A has settled, only Hold B is still pending.
+        $importer->importReserved($account, $account->user_id, [
+            new ReservedTransaction(new DateTimeImmutable('2026-01-16'), 'Hold B', -2500, 'RSD', '941'),
+        ]);
+
+        $this->assertDatabaseCount('transactions', 1);
+        $this->assertDatabaseHas('transactions', ['place' => 'Hold B']);
+        $this->assertDatabaseMissing('transactions', ['place' => 'Hold A']);
+    }
+
+    public function test_reimporting_reserved_funds_with_an_empty_snapshot_clears_them(): void
+    {
+        $account = $this->makeAccount();
+        $importer = new TransactionImporter;
+
+        $importer->importReserved($account, $account->user_id, [
+            new ReservedTransaction(new DateTimeImmutable('2026-01-15'), 'Hold A', -5000, 'RSD', '941'),
+        ]);
+        $importer->importReserved($account, $account->user_id, []);
+
+        $this->assertDatabaseCount('transactions', 0);
+    }
+
     public function test_reserved_transactions_are_excluded_from_the_default_stats_scope(): void
     {
         $account = $this->makeAccount();

@@ -55,11 +55,23 @@ class TransactionImporter
     }
 
     /**
+     * Reserved funds are a point-in-time snapshot of the account's current
+     * pending holds, not history: once a hold settles it reappears as a
+     * real posted transaction with a different (bank-assigned) id, so the
+     * old reserved row would linger forever and double-count in any query
+     * that forgets scopeExcludingReserved. Replace the account's whole
+     * reserved set on every import rather than appending to it.
+     *
      * @param  ReservedTransaction[]  $reserved
-     * @return int Rows actually inserted (duplicates are silently skipped).
+     * @return int Rows actually inserted.
      */
     public function importReserved(Account $account, int $importedByUserId, array $reserved): int
     {
+        TransactionModel::query()
+            ->where('account_id', $account->id)
+            ->where('type', TransactionType::Reserved->value)
+            ->delete();
+
         if (empty($reserved)) {
             return 0;
         }
