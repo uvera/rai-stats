@@ -2,11 +2,15 @@
 
 namespace Tests\Feature\Filament;
 
+use App\Filament\Widgets\IncomeExpenseChart;
 use App\Filament\Widgets\LargestTransactionsTable;
 use App\Filament\Widgets\LeaderboardTable;
+use App\Filament\Widgets\RecurringChargesTable;
 use App\Filament\Widgets\SpendByCategoryChart;
 use App\Filament\Widgets\SpendPerAccountTable;
+use App\Filament\Widgets\SpendPerPlaceOverTimeChart;
 use App\Filament\Widgets\StatsOverview;
+use App\Filament\Widgets\TopPlacesChart;
 use App\Models\Account;
 use App\Models\Category;
 use App\Models\Transaction;
@@ -88,6 +92,42 @@ class StatsWidgetsTest extends TestCase
 
         Livewire::test(SpendByCategoryChart::class, ['userId' => $user->id, 'pageFilters' => $this->pageFilters()])
             ->assertOk();
+    }
+
+    public function test_top_places_income_expense_and_place_over_time_charts_render(): void
+    {
+        $user = User::factory()->create();
+        $account = Account::factory()->for($user)->create();
+
+        Transaction::factory()->for($account)->for($user)->create(['place' => 'Corner Shop', 'amount_cents' => -1000, 'date' => now()]);
+        Transaction::factory()->for($account)->for($user)->create(['place' => 'Corner Shop', 'amount_cents' => -2500, 'date' => now()->subMonth()]);
+        Transaction::factory()->for($account)->for($user)->create(['amount_cents' => 5000, 'date' => now()]);
+
+        $this->actingAs($user);
+
+        foreach ([TopPlacesChart::class, IncomeExpenseChart::class, SpendPerPlaceOverTimeChart::class] as $widget) {
+            Livewire::test($widget, ['userId' => $user->id, 'pageFilters' => $this->pageFilters()])->assertOk();
+        }
+    }
+
+    public function test_recurring_charges_table_surfaces_a_stable_monthly_charge(): void
+    {
+        $user = User::factory()->create();
+        $account = Account::factory()->for($user)->create();
+
+        foreach (range(0, 4) as $monthsAgo) {
+            Transaction::factory()->for($account)->for($user)->create([
+                'place' => 'Streaming Service',
+                'amount_cents' => -1499,
+                'date' => now()->subMonths($monthsAgo)->startOfMonth()->addDays(3),
+            ]);
+        }
+
+        $this->actingAs($user);
+
+        Livewire::test(RecurringChargesTable::class, ['userId' => $user->id, 'pageFilters' => $this->pageFilters()])
+            ->assertOk()
+            ->assertSeeText('Streaming Service');
     }
 
     public function test_leaderboard_table_lists_every_user_regardless_of_the_scope(): void

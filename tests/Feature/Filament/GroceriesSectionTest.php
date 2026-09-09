@@ -7,8 +7,13 @@ use App\Filament\Resources\GroceryAccounts\Pages\CreateGroceryAccount;
 use App\Filament\Resources\GroceryAccounts\Pages\ListGroceryAccounts;
 use App\Filament\Resources\GroceryReceipts\Pages\ListGroceryReceipts;
 use App\Filament\Resources\GroceryReceipts\Pages\ViewGroceryReceipt;
+use App\Filament\Widgets\Groceries\BasketSizeOverTimeChart;
+use App\Filament\Widgets\Groceries\GroceryStatsOverview;
+use App\Filament\Widgets\Groceries\ProductCategorySpendChart;
+use App\Filament\Widgets\Groceries\TopProductsChart;
 use App\Models\GroceryAccount;
 use App\Models\GroceryReceipt;
+use App\Models\GroceryReceiptItem;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Livewire\Livewire;
@@ -27,6 +32,33 @@ class GroceriesSectionTest extends TestCase
         Livewire::test(ListGroceryAccounts::class)->assertOk();
         Livewire::test(ListGroceryReceipts::class)->assertOk();
         Livewire::test(GroceryStats::class)->assertOk();
+    }
+
+    public function test_every_grocery_stats_widget_renders(): void
+    {
+        $this->actingAs(User::factory()->create());
+
+        $account = GroceryAccount::factory()->create();
+        $receipt = GroceryReceipt::factory()->for($account, 'account')->create([
+            'purchased_at' => now(), 'total_cents' => 40000,
+        ]);
+        GroceryReceiptItem::factory()->for($receipt, 'receipt')->create([
+            'name' => 'Milk', 'total_cents' => 12000, 'vat_rate' => 20,
+        ]);
+
+        $filters = ['pageFilters' => [
+            'from' => now()->startOfYear()->format('Y-m-d'),
+            'to' => now()->format('Y-m-d'),
+        ]];
+
+        foreach ([
+            GroceryStatsOverview::class,
+            BasketSizeOverTimeChart::class,
+            ProductCategorySpendChart::class,
+            TopProductsChart::class,
+        ] as $widget) {
+            Livewire::test($widget, $filters)->assertOk();
+        }
     }
 
     public function test_non_admin_cannot_create_a_maxi_account(): void

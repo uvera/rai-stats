@@ -249,6 +249,38 @@ class TransactionStatsTest extends TestCase
         $this->assertSame($stats->atmWithdrawalTotalsByCurrency(), $overview['atm_withdrawal_cents']);
     }
 
+    public function test_spend_per_place_over_time_pivots_top_places_into_period_columns(): void
+    {
+        $user = User::factory()->create();
+        $account = Account::factory()->for($user)->create();
+
+        Transaction::factory()->for($account)->for($user)->create(['place' => 'Cafe', 'amount_cents' => -1000, 'date' => '2026-01-10']);
+        Transaction::factory()->for($account)->for($user)->create(['place' => 'Cafe', 'amount_cents' => -2000, 'date' => '2026-02-10']);
+        Transaction::factory()->for($account)->for($user)->create(['place' => 'Shop', 'amount_cents' => -500, 'date' => '2026-01-15']);
+
+        $result = $this->stats($user->id)->spendPerPlaceOverTime(topPlaces: 5);
+
+        $this->assertCount(2, $result['periods']);
+        $cafe = collect($result['places'])->firstWhere('place', 'Cafe');
+        $this->assertSame([1000, 2000], array_values($cafe['totals']));
+    }
+
+    public function test_spend_per_place_over_time_is_empty_when_there_is_no_spend(): void
+    {
+        $user = User::factory()->create();
+
+        $this->assertSame(['periods' => [], 'places' => []], $this->stats($user->id)->spendPerPlaceOverTime());
+    }
+
+    public function test_format_period_labels_by_the_configured_grouping(): void
+    {
+        $user = User::factory()->create();
+
+        $this->assertSame('Mar 2026', $this->stats($user->id, 'month')->formatPeriod('2026-03-01'));
+        $this->assertSame('Q1 2026', $this->stats($user->id, 'quarter')->formatPeriod('2026-03-01'));
+        $this->assertSame('2026', $this->stats($user->id, 'year')->formatPeriod('2026-03-01'));
+    }
+
     public function test_reserved_transactions_are_excluded_from_every_query(): void
     {
         $user = User::factory()->create();
