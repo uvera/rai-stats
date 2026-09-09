@@ -3,7 +3,7 @@
 namespace App\Services\Raiffeisen;
 
 use FFI;
-use RuntimeException;
+use FFI\Exception as FFIException;
 
 /**
  * Reproduces RaiOnline's login password hash byte-for-bit.
@@ -34,12 +34,20 @@ class Argon2iHasher
             $salt .= str_repeat("\0", self::MIN_SALT_LENGTH - strlen($salt));
         }
 
-        $ffi = FFI::cdef(
-            'int argon2i_hash_raw(const uint32_t t_cost, const uint32_t m_cost, '
-                .'const uint32_t parallelism, const void *pwd, const size_t pwdlen, '
-                .'const void *salt, const size_t saltlen, void *hash, const size_t hashlen);',
-            'libargon2.so.1'
-        );
+        try {
+            $ffi = FFI::cdef(
+                'int argon2i_hash_raw(const uint32_t t_cost, const uint32_t m_cost, '
+                    .'const uint32_t parallelism, const void *pwd, const size_t pwdlen, '
+                    .'const void *salt, const size_t saltlen, void *hash, const size_t hashlen);',
+                'libargon2.so.1'
+            );
+        } catch (FFIException $e) {
+            throw new RaiffeisenException(
+                'Cannot hash the login password: the FFI extension or libargon2 '
+                    ."(libargon2.so.1) is unavailable - {$e->getMessage()}",
+                previous: $e,
+            );
+        }
 
         $hashBuf = $ffi->new('unsigned char['.self::HASH_LENGTH.']');
 
@@ -56,7 +64,7 @@ class Argon2iHasher
         );
 
         if ($result !== 0) {
-            throw new RuntimeException("argon2i_hash_raw failed with code {$result}");
+            throw new RaiffeisenException("argon2i_hash_raw failed with code {$result}");
         }
 
         $hex = '';
