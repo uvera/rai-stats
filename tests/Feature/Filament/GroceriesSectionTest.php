@@ -3,10 +3,14 @@
 namespace Tests\Feature\Filament;
 
 use App\Filament\Pages\GroceryStats;
+use App\Filament\Resources\ArticlePrices\Pages\ListArticlePrices;
+use App\Filament\Resources\ArticlePrices\Pages\ViewArticlePrice;
 use App\Filament\Resources\GroceryAccounts\Pages\CreateGroceryAccount;
 use App\Filament\Resources\GroceryAccounts\Pages\ListGroceryAccounts;
 use App\Filament\Resources\GroceryReceipts\Pages\ListGroceryReceipts;
 use App\Filament\Resources\GroceryReceipts\Pages\ViewGroceryReceipt;
+use App\Filament\Widgets\Groceries\ArticlePriceHistoryChart;
+use App\Filament\Widgets\Groceries\ArticlePurchasesTable;
 use App\Filament\Widgets\Groceries\BasketSizeOverTimeChart;
 use App\Filament\Widgets\Groceries\GroceryStatsOverview;
 use App\Filament\Widgets\Groceries\ProductCategorySpendChart;
@@ -96,6 +100,85 @@ class GroceriesSectionTest extends TestCase
         $this->actingAs(User::factory()->admin()->create());
         Livewire::test(ViewGroceryReceipt::class, ['record' => $receipt->getKey()])
             ->assertActionVisible('linkTransaction');
+    }
+
+    public function test_article_prices_list_searches_and_the_view_shows_history(): void
+    {
+        $this->actingAs(User::factory()->create());
+
+        $older = GroceryReceipt::factory()->create([
+            'purchased_at' => '2026-03-01 10:00:00',
+            'store_name' => 'Maxi 12',
+        ]);
+        $newer = GroceryReceipt::factory()->create([
+            'purchased_at' => '2026-06-01 10:00:00',
+            'store_name' => 'Maxi 40',
+        ]);
+        $metro = GroceryReceipt::factory()->metro()->create([
+            'purchased_at' => '2026-08-01 10:00:00',
+            'store_name' => 'Metro 22',
+        ]);
+
+        $firstMilk = GroceryReceiptItem::factory()->for($older, 'receipt')->create([
+            'line_no' => 1,
+            'name' => 'Milk',
+            'unit_price_cents' => 10000,
+            'quantity' => 1,
+            'total_cents' => 10000,
+        ]);
+        $laterMilk = GroceryReceiptItem::factory()->for($newer, 'receipt')->create([
+            'line_no' => 1,
+            'name' => 'Milk',
+            'unit_price_cents' => 15000,
+            'quantity' => 1,
+            'total_cents' => 15000,
+        ]);
+        $bread = GroceryReceiptItem::factory()->for($older, 'receipt')->create([
+            'line_no' => 2,
+            'name' => 'Bread',
+            'unit_price_cents' => 8000,
+            'quantity' => 1,
+            'total_cents' => 8000,
+        ]);
+        $lime = GroceryReceiptItem::factory()->for($metro, 'receipt')->create([
+            'line_no' => 1,
+            'name' => 'Lime',
+            'unit_price_cents' => 5000,
+            'quantity' => 1,
+            'total_cents' => 5000,
+        ]);
+
+        Livewire::test(ListArticlePrices::class)
+            ->assertOk()
+            ->assertCanSeeTableRecords([$firstMilk, $bread, $lime])
+            ->searchTable('Milk')
+            ->assertCanSeeTableRecords([$firstMilk])
+            ->assertCanNotSeeTableRecords([$bread, $lime]);
+
+        Livewire::test(ListArticlePrices::class)
+            ->filterTable('provider', 'metro')
+            ->assertCanSeeTableRecords([$lime])
+            ->assertCanNotSeeTableRecords([$firstMilk, $bread]);
+
+        Livewire::test(ViewArticlePrice::class, ['record' => $firstMilk->getKey()])
+            ->assertOk()
+            ->assertSee('Milk')
+            ->assertSee('150.00')
+            ->assertSee('100.00')
+            ->assertSee('Maxi 40')
+            ->assertSee('Unit price over time');
+
+        Livewire::test(ArticlePurchasesTable::class, ['record' => $firstMilk])
+            ->assertOk()
+            ->assertCanSeeTableRecords([$firstMilk, $laterMilk])
+            ->assertSee('Maxi 40')
+            ->assertSee('150.00');
+
+        Livewire::test(ArticlePriceHistoryChart::class, ['record' => $firstMilk])
+            ->assertOk()
+            ->assertSee('Unit price over time')
+            ->assertSee('100')
+            ->assertSee('150');
     }
 
     public function test_sync_actions_are_admin_only_on_the_accounts_table(): void

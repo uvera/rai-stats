@@ -33,7 +33,7 @@ class GroceryStats extends Page
 
     protected static ?string $title = 'Grocery stats';
 
-    protected static ?int $navigationSort = 4;
+    protected static ?int $navigationSort = 5;
 
     /**
      * @var array<string, mixed>|null
