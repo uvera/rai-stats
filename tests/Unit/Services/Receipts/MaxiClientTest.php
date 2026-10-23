@@ -2,8 +2,10 @@
 
 namespace Tests\Unit\Services\Receipts;
 
+use App\Enums\PromotionSource;
 use App\Services\Receipts\Maxi\MaxiClient;
 use App\Services\Receipts\ReceiptAuthException;
+use App\Services\Receipts\ReceiptException;
 use GuzzleHttp\Client;
 use GuzzleHttp\Handler\MockHandler;
 use GuzzleHttp\HandlerStack;
@@ -147,5 +149,155 @@ class MaxiClientTest extends TestCase
         $client = $this->client([new Response(200, ['Content-Type' => 'application/pdf'], '%PDF-1.4 fake')]);
 
         $this->assertSame('%PDF-1.4 fake', $client->downloadReceipt('https://example.test/eReceipt/x', 'dev-uuid'));
+    }
+
+    public function test_store_id_reads_the_profile(): void
+    {
+        $client = $this->client([
+            new Response(200, [], json_encode(['Status' => true, 'Data' => ['StoreId' => 213217]])),
+        ]);
+
+        $this->assertSame('213217', $client->storeId('token', 'dev-uuid'));
+        $this->assertSame(
+            'https://mobileloyalty-prod.delhaize.rs/prod/A/api/AppEndUser/GetAuthenticatedAppUser',
+            (string) $this->lastRequest()->getUri()
+        );
+    }
+
+    public function test_store_id_without_a_store_is_an_error(): void
+    {
+        $client = $this->client([
+            new Response(200, [], json_encode(['Status' => true, 'Data' => null])),
+        ]);
+
+        $this->expectException(ReceiptException::class);
+        $this->expectExceptionMessage(MaxiClient::NO_STORE);
+        $client->storeId('token', 'dev-uuid');
+    }
+
+    public function test_store_id_401_raises_auth_exception(): void
+    {
+        $client = $this->client([new Response(401, [], 'nope')]);
+
+        $this->expectException(ReceiptAuthException::class);
+        $client->storeId('stale', 'dev-uuid');
+    }
+
+    public function test_promotions_page_until_a_short_page_and_keep_both_prices(): void
+    {
+        $client = $this->client([
+            new Response(200, [], json_encode([
+                'Status' => true,
+                'Data' => [
+                    'Articles' => [$this->article('1', 10), $this->article('2', 20)],
+                    'RecordsPerPage' => 2,
+                    'TotalRecords' => 3,
+                ],
+            ])),
+            new Response(200, [], json_encode([
+                'Status' => true,
+                'Data' => [
+                    'Articles' => [$this->article('7671065', 713.99)],
+                    'RecordsPerPage' => 2,
+                    'TotalRecords' => 3,
+                ],
+            ])),
+            $this->emptyFeed(),
+            $this->emptyFeed(),
+            $this->emptyFeed(),
+            $this->emptyFeed(),
+            new Response(200, [], json_encode([
+                'Status' => true,
+                'Data' => [[
+                    'Articles' => [$this->article('7671065', 678)],
+                ]],
+            ])),
+        ]);
+
+        $rows = $client->listPromotions('token', 'dev-uuid', '213217');
+
+        $this->assertCount(4, $rows);
+        $overlap = array_values(array_filter(
+            $rows,
+            fn (array $row): bool => $row['article']['ArticleId'] === '7671065',
+        ));
+        $this->assertSame([
+            [PromotionSource::Triweekly, 713.99],
+            [PromotionSource::Directed, 678],
+        ], array_map(
+            fn (array $row): array => [$row['source'], $row['article']['DiscountPrice']],
+            $overlap,
+        ));
+
+        $queries = array_map(
+            fn (array $entry): string => (string) $entry['request']->getUri(),
+            $this->history,
+        );
+        $this->assertStringContainsString('parPage=0', $queries[0]);
+        $this->assertStringContainsString('parPage=1', $queries[1]);
+        $this->assertStringContainsString('parIsIncludeBanner=undefined', $queries[0]);
+        $this->assertStringContainsString('GetAvailableDirectedPromotionByUser', $queries[6]);
+        $this->assertCount(7, $queries);
+    }
+
+    public function test_a_missing_promotion_feed_is_empty(): void
+    {
+        $client = $this->client([
+            $this->emptyFeed(),
+            $this->emptyFeed(),
+            $this->emptyFeed(),
+            $this->emptyFeed(),
+            $this->emptyFeed(),
+            $this->emptyFeed(),
+        ]);
+
+        $this->assertSame([], $client->listPromotions('token', 'dev-uuid', '213217'));
+    }
+
+    public function test_promotions_401_raises_auth_exception(): void
+    {
+        $client = $this->client([new Response(401, [], 'nope')]);
+
+        $this->expectException(ReceiptAuthException::class);
+        $client->listPromotions('stale', 'dev-uuid', '213217');
+    }
+
+    public function test_promotions_5xx_throws_without_a_partial_list(): void
+    {
+        $client = $this->client([
+            new Response(200, [], json_encode([
+                'Status' => true,
+                'Data' => [
+                    'Articles' => [$this->article('1', 10), $this->article('2', 20)],
+                    'RecordsPerPage' => 2,
+                    'TotalRecords' => 4,
+                ],
+            ])),
+            new Response(500, [], 'down'),
+        ]);
+
+        $this->expectException(ReceiptException::class);
+        $client->listPromotions('token', 'dev-uuid', '213217');
+    }
+
+    private function emptyFeed(): Response
+    {
+        return new Response(200, [], json_encode([
+            'Status' => true,
+            'Message' => 'Data not found...',
+            'Data' => null,
+        ]));
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function article(string $id, float|int $discount): array
+    {
+        return [
+            'ArticleId' => $id,
+            'ArticleName' => 'Badem',
+            'DiscountPrice' => $discount,
+        ];
     }
 }

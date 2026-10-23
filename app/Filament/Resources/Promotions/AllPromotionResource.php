@@ -4,7 +4,7 @@ namespace App\Filament\Resources\Promotions;
 
 use App\Filament\Resources\Promotions\Pages\ListAllPromotions;
 use App\Filament\Resources\Promotions\Tables\AllPromotionsTable;
-use App\Models\MetroPromotion;
+use App\Models\GroceryPromotion;
 use Filament\Resources\Resource;
 use Filament\Tables\Table;
 use Illuminate\Database\Eloquent\Builder;
@@ -13,7 +13,7 @@ use UnitEnum;
 
 class AllPromotionResource extends Resource
 {
-    protected static ?string $model = MetroPromotion::class;
+    protected static ?string $model = GroceryPromotion::class;
 
     protected static ?string $slug = 'promotions';
 

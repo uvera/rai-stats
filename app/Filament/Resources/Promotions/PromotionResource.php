@@ -4,7 +4,7 @@ namespace App\Filament\Resources\Promotions;
 
 use App\Filament\Resources\Promotions\Pages\ListPromotions;
 use App\Filament\Resources\Promotions\Tables\PromotionsTable;
-use App\Models\MetroPromotionMatch;
+use App\Models\GroceryPromotionMatch;
 use Filament\Resources\Resource;
 use Filament\Tables\Table;
 use Illuminate\Database\Eloquent\Builder;
@@ -13,7 +13,7 @@ use UnitEnum;
 
 class PromotionResource extends Resource
 {
-    protected static ?string $model = MetroPromotionMatch::class;
+    protected static ?string $model = GroceryPromotionMatch::class;
 
     protected static ?string $slug = 'matching-promotions';
 
@@ -61,8 +61,8 @@ class PromotionResource extends Resource
     public static function getEloquentQuery(): Builder
     {
         return parent::getEloquentQuery()
-            ->select('metro_promotion_matches.*')
-            ->join('metro_promotions', 'metro_promotions.id', '=', 'metro_promotion_matches.metro_promotion_id')
+            ->select('grocery_promotion_matches.*')
+            ->join('grocery_promotions', 'grocery_promotions.id', '=', 'grocery_promotion_matches.grocery_promotion_id')
             ->with(['promotion.account']);
     }
 

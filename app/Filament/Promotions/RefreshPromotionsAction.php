@@ -3,6 +3,7 @@
 namespace App\Filament\Promotions;
 
 use App\Enums\ReceiptProvider;
+use App\Jobs\RefreshMaxiPromotions;
 use App\Jobs\RefreshMetroPromotions;
 use App\Models\GroceryAccount;
 use App\Models\User;
@@ -25,16 +26,18 @@ class RefreshPromotionsAction
                 }
 
                 return GroceryAccount::query()
-                    ->where('provider', ReceiptProvider::Metro)
+                    ->whereIn('provider', [ReceiptProvider::Metro, ReceiptProvider::Maxi])
                     ->get()
                     ->contains(fn (GroceryAccount $account): bool => $account->canSyncUnattended() && $user->can('update', $account));
             })
             ->action(function (): void {
                 $user = auth()->user();
-                $count = RefreshMetroPromotions::dispatchUnattended($user instanceof User ? $user : null);
+                $actor = $user instanceof User ? $user : null;
+                $count = RefreshMetroPromotions::dispatchUnattended($actor)
+                    + RefreshMaxiPromotions::dispatchUnattended($actor);
 
                 Notification::make()
-                    ->title($count === 1 ? 'Refresh started for 1 Metro account' : "Refresh started for {$count} Metro accounts")
+                    ->title($count === 1 ? 'Refresh started for 1 account' : "Refresh started for {$count} accounts")
                     ->body('The result will show up under Sync reports.')
                     ->success()
                     ->send();

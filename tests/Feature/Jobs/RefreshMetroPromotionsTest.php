@@ -6,12 +6,13 @@ use App\Enums\SyncKind;
 use App\Enums\SyncRunStatus;
 use App\Jobs\RaiffeisenImportJob;
 use App\Jobs\RaiffeisenLoginJob;
+use App\Jobs\RefreshMaxiPromotions;
 use App\Jobs\RefreshMetroPromotions;
 use App\Jobs\SyncGroceryAccountJob;
 use App\Models\GroceryAccount;
+use App\Models\GroceryPromotion;
 use App\Models\GroceryReceipt;
 use App\Models\GroceryReceiptItem;
-use App\Models\MetroPromotion;
 use App\Models\SyncRun;
 use App\Models\User;
 use App\Services\Promotions\PromotionMatcher;
@@ -39,11 +40,11 @@ class RefreshMetroPromotionsTest extends TestCase
         ]);
         $other = GroceryAccount::factory()->metro()->create();
 
-        MetroPromotion::factory()->for($account, 'account')->create([
+        GroceryPromotion::factory()->for($account, 'account')->create([
             'shop_variant_id' => 'OLD',
             'name' => 'Gone',
         ]);
-        $kept = MetroPromotion::factory()->for($other, 'account')->create([
+        $kept = GroceryPromotion::factory()->for($other, 'account')->create([
             'shop_variant_id' => 'KEEP',
             'name' => 'Other account',
         ]);
@@ -72,16 +73,16 @@ class RefreshMetroPromotionsTest extends TestCase
 
         $this->assertSame('RS_9_100_1', $account->fresh()->external_id);
         $this->assertNotNull($account->fresh()->promotions_synced_at);
-        $this->assertDatabaseMissing('metro_promotions', ['shop_variant_id' => 'OLD']);
-        $this->assertDatabaseHas('metro_promotions', ['id' => $kept->id, 'name' => 'Other account']);
-        $this->assertDatabaseCount('metro_promotions', 4);
-        $this->assertDatabaseCount('metro_promotion_matches', 1);
-        $this->assertDatabaseHas('metro_promotion_matches', [
+        $this->assertDatabaseMissing('grocery_promotions', ['shop_variant_id' => 'OLD']);
+        $this->assertDatabaseHas('grocery_promotions', ['id' => $kept->id, 'name' => 'Other account']);
+        $this->assertDatabaseCount('grocery_promotions', 4);
+        $this->assertDatabaseCount('grocery_promotion_matches', 1);
+        $this->assertDatabaseHas('grocery_promotion_matches', [
             'article_name' => 'COLLA PARMIGANO REGGIANO 200G',
             'times_bought' => 2,
             'last_unit_price_cents' => 48000,
         ]);
-        $this->assertDatabaseHas('metro_promotions', [
+        $this->assertDatabaseHas('grocery_promotions', [
             'grocery_account_id' => $account->id,
             'store_number' => '9',
             'shop_variant_id' => 'BTY-1',
@@ -107,7 +108,7 @@ class RefreshMetroPromotionsTest extends TestCase
         $account = GroceryAccount::factory()->metro()->withValidToken()->create([
             'user_id' => $user->id,
         ]);
-        MetroPromotion::factory()->for($account, 'account')->create([
+        GroceryPromotion::factory()->for($account, 'account')->create([
             'shop_variant_id' => 'OLD',
             'name' => 'Still here',
         ]);
@@ -125,8 +126,8 @@ class RefreshMetroPromotionsTest extends TestCase
 
         $run = $this->refresh($account);
 
-        $this->assertDatabaseHas('metro_promotions', ['shop_variant_id' => 'OLD', 'name' => 'Still here']);
-        $this->assertDatabaseMissing('metro_promotions', ['shop_variant_id' => 'BTY-1']);
+        $this->assertDatabaseHas('grocery_promotions', ['shop_variant_id' => 'OLD', 'name' => 'Still here']);
+        $this->assertDatabaseMissing('grocery_promotions', ['shop_variant_id' => 'BTY-1']);
         $this->assertNull($account->fresh()->promotions_synced_at);
         $this->assertNull($account->fresh()->external_id);
 
@@ -155,7 +156,7 @@ class RefreshMetroPromotionsTest extends TestCase
         RefreshMetroPromotions::dispatchUnattended();
 
         $this->assertDatabaseCount('sync_runs', 0);
-        $this->assertDatabaseCount('metro_promotions', 0);
+        $this->assertDatabaseCount('grocery_promotions', 0);
         $this->assertSame(0, $user->notifications()->count());
         $this->assertNull($account->fresh()->promotions_synced_at);
     }
@@ -181,7 +182,7 @@ class RefreshMetroPromotionsTest extends TestCase
         $this->assertSame(SyncRunStatus::Failed, $run->status);
         $this->assertSame('Refresh failed', $run->summary);
         $this->assertSame('A promotion refresh for this account is already running.', $run->message);
-        $this->assertDatabaseCount('metro_promotions', 0);
+        $this->assertDatabaseCount('grocery_promotions', 0);
     }
 
     public function test_the_queue_waits_longer_than_any_job_can_run(): void
@@ -190,6 +191,7 @@ class RefreshMetroPromotionsTest extends TestCase
             fn (string $job) => (new ReflectionClass($job))->getDefaultProperties()['timeout'],
             [
                 RefreshMetroPromotions::class,
+                RefreshMaxiPromotions::class,
                 SyncGroceryAccountJob::class,
                 RaiffeisenLoginJob::class,
                 RaiffeisenImportJob::class,

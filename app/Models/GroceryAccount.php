@@ -59,7 +59,7 @@ class GroceryAccount extends Model
 
     public function promotions(): HasMany
     {
-        return $this->hasMany(MetroPromotion::class);
+        return $this->hasMany(GroceryPromotion::class);
     }
 
     /**

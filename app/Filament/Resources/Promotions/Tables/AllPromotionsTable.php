@@ -3,8 +3,9 @@
 namespace App\Filament\Resources\Promotions\Tables;
 
 use App\Enums\ReceiptProvider;
+use App\Filament\Promotions\PersonalCatalogColumns;
 use App\Models\GroceryAccount;
-use App\Models\MetroPromotion;
+use App\Models\GroceryPromotion;
 use App\Support\ArticlePrices;
 use Filament\Tables\Columns\ImageColumn;
 use Filament\Tables\Columns\TextColumn;
@@ -52,7 +53,7 @@ class AllPromotionsTable
                     ->label('Discount')
                     ->alignEnd()
                     ->sortable(query: fn (Builder $query, string $direction): Builder => self::orderByDiscount($query, $direction))
-                    ->state(function (MetroPromotion $record): ?string {
+                    ->state(function (GroceryPromotion $record): ?string {
                         $strike = $record->strike_gross_cents;
                         $gross = $record->gross_cents;
 
@@ -71,12 +72,14 @@ class AllPromotionsTable
                     ->sortable()
                     ->toggleable()
                     ->visibleFrom('lg'),
+                ...PersonalCatalogColumns::columns(),
             ])
             ->filters([
+                PersonalCatalogColumns::filter(),
                 SelectFilter::make('account')
                     ->label('Account')
                     ->options(fn () => GroceryAccount::query()
-                        ->where('provider', ReceiptProvider::Metro)
+                        ->whereIn('provider', [ReceiptProvider::Metro, ReceiptProvider::Maxi])
                         ->orderBy('label')
                         ->pluck('label', 'id'))
                     ->query(fn (Builder $query, array $data): Builder => filled($data['value'] ?? null)

@@ -8,10 +8,10 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 #[Fillable([
-    'metro_promotion_id', 'article_name', 'times_bought', 'last_purchased_at',
+    'grocery_promotion_id', 'article_name', 'times_bought', 'last_purchased_at',
     'last_unit_price_cents',
 ])]
-class MetroPromotionMatch extends Model
+class GroceryPromotionMatch extends Model
 {
     use HasFactory;
 
@@ -26,6 +26,6 @@ class MetroPromotionMatch extends Model
 
     public function promotion(): BelongsTo
     {
-        return $this->belongsTo(MetroPromotion::class, 'metro_promotion_id');
+        return $this->belongsTo(GroceryPromotion::class, 'grocery_promotion_id');
     }
 }

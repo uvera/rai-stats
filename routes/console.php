@@ -1,5 +1,6 @@
 <?php
 
+use App\Jobs\RefreshMaxiPromotions;
 use App\Jobs\RefreshMetroPromotions;
 use Illuminate\Foundation\Inspiring;
 use Illuminate\Support\Facades\Artisan;
@@ -12,4 +13,9 @@ Artisan::command('inspire', function () {
 Schedule::call(fn () => RefreshMetroPromotions::dispatchUnattended())
     ->dailyAt('04:00')
     ->name('metro-promotions')
+    ->withoutOverlapping();
+
+Schedule::call(fn () => RefreshMaxiPromotions::dispatchUnattended())
+    ->dailyAt('04:00')
+    ->name('maxi-promotions')
     ->withoutOverlapping();

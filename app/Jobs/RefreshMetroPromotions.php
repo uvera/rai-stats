@@ -7,7 +7,7 @@ use App\Enums\SyncKind;
 use App\Enums\SyncRunStatus;
 use App\Enums\UserRole;
 use App\Models\GroceryAccount;
-use App\Models\MetroPromotion;
+use App\Models\GroceryPromotion;
 use App\Models\SyncRun;
 use App\Models\User;
 use App\Services\Promotions\FrequentArticles;
@@ -213,7 +213,7 @@ class RefreshMetroPromotions implements ShouldQueue
             $account->promotions()->delete();
 
             foreach ($rows as $attributes) {
-                $promotion = MetroPromotion::query()->create($attributes);
+                $promotion = GroceryPromotion::query()->create($attributes);
 
                 foreach ($frequent as $bought) {
                     if (! $matcher->matches($bought->name, $promotion->name)) {

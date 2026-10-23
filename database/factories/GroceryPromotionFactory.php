@@ -2,16 +2,17 @@
 
 namespace Database\Factories;
 
+use App\Enums\PromotionSource;
 use App\Models\GroceryAccount;
-use App\Models\MetroPromotion;
+use App\Models\GroceryPromotion;
 use Illuminate\Database\Eloquent\Factories\Factory;
 
 /**
- * @extends Factory<MetroPromotion>
+ * @extends Factory<GroceryPromotion>
  */
-class MetroPromotionFactory extends Factory
+class GroceryPromotionFactory extends Factory
 {
-    protected $model = MetroPromotion::class;
+    protected $model = GroceryPromotion::class;
 
     public function definition(): array
     {
@@ -19,6 +20,7 @@ class MetroPromotionFactory extends Factory
             'grocery_account_id' => GroceryAccount::factory()->metro(),
             'store_number' => '22',
             'shop_variant_id' => 'BTY-'.$this->faker->unique()->numerify('######'),
+            'source' => PromotionSource::Ranked,
             'name' => $this->faker->words(4, true),
             'brand' => $this->faker->word(),
             'image_url' => 'https://cdn.metro-group.com/rs/example.png',

@@ -2,6 +2,7 @@
 
 namespace App\Services\Promotions;
 
+use App\Enums\PromotionSource;
 use Carbon\CarbonImmutable;
 use Throwable;
 
@@ -34,6 +35,7 @@ class RankedPromotion
             'grocery_account_id' => $groceryAccountId,
             'store_number' => $store,
             'shop_variant_id' => $shopVariantId,
+            'source' => PromotionSource::Ranked,
             'name' => $name,
             'brand' => is_string($brand) && $brand !== '' ? $brand : null,
             'image_url' => self::image($article, $bundle),
