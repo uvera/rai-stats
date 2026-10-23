@@ -2,6 +2,8 @@
 
 namespace App\Jobs;
 
+use App\Enums\SyncRunStatus;
+use App\Models\SyncRun;
 use App\Services\Raiffeisen\RaiffeisenClient;
 use App\Services\Raiffeisen\RaiffeisenException;
 use App\Support\RaiffeisenImportSession;
@@ -29,6 +31,7 @@ class RaiffeisenLoginJob implements ShouldQueue
     public function __construct(
         private readonly string $importSessionId,
         private readonly string $username,
+        private readonly ?int $syncRunId = null,
     ) {}
 
     public function handle(RaiffeisenClient $client): void
@@ -36,10 +39,7 @@ class RaiffeisenLoginJob implements ShouldQueue
         $password = RaiffeisenImportSession::takePassword($this->importSessionId);
 
         if ($password === null) {
-            RaiffeisenImportSession::setState($this->importSessionId, [
-                'status' => 'failed',
-                'message' => 'Password expired before the login could run - please try again.',
-            ]);
+            $this->fail('Password expired before the login could run - please try again.');
 
             return;
         }
@@ -58,6 +58,11 @@ class RaiffeisenLoginJob implements ShouldQueue
             }
 
             $accounts = $client->allAccountBalance();
+
+            // A successful login is not a report — the import that follows is.
+            if ($this->syncRunId !== null) {
+                SyncRun::query()->whereKey($this->syncRunId)->delete();
+            }
 
             RaiffeisenImportSession::setState($this->importSessionId, [
                 'status' => 'ready',
@@ -81,10 +86,7 @@ class RaiffeisenLoginJob implements ShouldQueue
                 'session' => $this->importSessionId,
                 'reason' => $e->getMessage(),
             ]);
-            RaiffeisenImportSession::setState($this->importSessionId, [
-                'status' => 'failed',
-                'message' => $e->getMessage(),
-            ]);
+            $this->fail(SyncRun::clip($e->getMessage()) ?? 'Login failed.');
         } catch (Throwable $e) {
             // Anything else is unexpected: log it in full, show nothing
             // that might carry an upstream response body.
@@ -92,10 +94,7 @@ class RaiffeisenLoginJob implements ShouldQueue
                 'session' => $this->importSessionId,
                 'exception' => $e,
             ]);
-            RaiffeisenImportSession::setState($this->importSessionId, [
-                'status' => 'failed',
-                'message' => 'Login failed unexpectedly. Please try again - if it keeps happening, check the application logs.',
-            ]);
+            $this->fail('Login failed unexpectedly. Please try again - if it keeps happening, check the application logs.');
         }
     }
 
@@ -112,9 +111,24 @@ class RaiffeisenLoginJob implements ShouldQueue
             'exception' => $e,
         ]);
 
+        $this->fail('Login failed unexpectedly. Please try again - if it keeps happening, check the application logs.');
+    }
+
+    private function fail(string $message): void
+    {
         RaiffeisenImportSession::setState($this->importSessionId, [
             'status' => 'failed',
-            'message' => 'Login failed unexpectedly. Please try again - if it keeps happening, check the application logs.',
+            'message' => $message,
         ]);
+
+        if ($this->syncRunId === null) {
+            return;
+        }
+
+        SyncRun::query()->find($this->syncRunId)?->finish(
+            SyncRunStatus::Failed,
+            'Login failed',
+            $message,
+        );
     }
 }

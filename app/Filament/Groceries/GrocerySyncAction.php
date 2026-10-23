@@ -2,8 +2,12 @@
 
 namespace App\Filament\Groceries;
 
+use App\Enums\SyncKind;
+use App\Enums\SyncRunStatus;
 use App\Jobs\SyncGroceryAccountJob;
 use App\Models\GroceryAccount;
+use App\Models\SyncRun;
+use App\Models\User;
 use App\Support\GrocerySyncSession;
 use Filament\Actions\Action;
 use Filament\Forms\Components\TextInput;
@@ -51,13 +55,35 @@ class GrocerySyncAction
 
     private static function dispatch(GroceryAccount $record, ?string $password = null): void
     {
+        $user = auth()->user();
+
+        if (! $user instanceof User) {
+            return;
+        }
+
+        if (SyncRun::grocerySyncInProgress($record->id)) {
+            $message = 'A sync for this account is already running.';
+            SyncRun::open($user, SyncKind::GrocerySync, $record, 'Syncing receipts')
+                ->finish(SyncRunStatus::Failed, 'Sync failed', $message);
+
+            Notification::make()
+                ->title('Sync already running')
+                ->body($message)
+                ->warning()
+                ->send();
+
+            return;
+        }
+
         $sessionId = GrocerySyncSession::start($record->id);
 
         if (filled($password)) {
             GrocerySyncSession::setPassword($sessionId, $password);
         }
 
-        SyncGroceryAccountJob::dispatch($record->id, $sessionId);
+        $run = SyncRun::open($user, SyncKind::GrocerySync, $record, 'Syncing receipts');
+
+        SyncGroceryAccountJob::dispatch($record->id, $sessionId, $run->id);
 
         Notification::make()
             ->title('Sync started')

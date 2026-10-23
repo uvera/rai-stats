@@ -2,7 +2,9 @@
 
 namespace App\Jobs;
 
+use App\Enums\SyncRunStatus;
 use App\Models\GroceryAccount;
+use App\Models\SyncRun;
 use App\Services\Receipts\Contracts\ProviderClient;
 use App\Services\Receipts\Data\InvoiceSummary;
 use App\Services\Receipts\Data\ProviderToken;
@@ -37,6 +39,7 @@ class SyncGroceryAccountJob implements ShouldQueue
     public function __construct(
         private readonly int $groceryAccountId,
         private readonly string $syncSessionId,
+        private readonly int $syncRunId,
     ) {}
 
     /**
@@ -54,6 +57,12 @@ class SyncGroceryAccountJob implements ShouldQueue
         $account = GroceryAccount::find($this->groceryAccountId);
 
         if ($account === null) {
+            $this->finishReport(
+                SyncRunStatus::Failed,
+                'Sync failed',
+                'The grocery account no longer exists.',
+            );
+
             return;
         }
 
@@ -65,10 +74,12 @@ class SyncGroceryAccountJob implements ShouldQueue
             $token = $this->resolveToken($account, $client);
 
             if ($token === null) {
+                $message = "Enter the {$account->provider->label()} password to sign in again.";
                 GrocerySyncSession::setState($this->syncSessionId, [
                     'status' => 'needs_password',
-                    'message' => "Enter the {$account->provider->label()} password to sign in again.",
+                    'message' => $message,
                 ]);
+                $this->finishReport(SyncRunStatus::NeedsPassword, 'Password required', $message);
 
                 return;
             }
@@ -81,31 +92,56 @@ class SyncGroceryAccountJob implements ShouldQueue
                 'token_expires_at' => null,
             ])->save();
 
+            $message = "The {$account->provider->label()} session expired - enter the password to sign in again.";
             GrocerySyncSession::setState($this->syncSessionId, [
                 'status' => 'needs_password',
-                'message' => "The {$account->provider->label()} session expired - enter the password to sign in again.",
+                'message' => $message,
             ]);
+            $this->finishReport(SyncRunStatus::NeedsPassword, 'Password required', $message);
         } catch (ReceiptException $e) {
             Log::warning('grocery.sync.failed', [
                 'account' => $this->groceryAccountId,
                 'provider' => $account->provider->value,
                 'reason' => $e->getMessage(),
             ]);
+            $message = SyncRun::clip($e->getMessage());
             GrocerySyncSession::setState($this->syncSessionId, [
                 'status' => 'failed',
-                'message' => $e->getMessage(),
+                'message' => $message,
             ]);
+            $this->finishReport(SyncRunStatus::Failed, 'Sync failed', $message);
         } catch (Throwable $e) {
             Log::error('grocery.sync.errored', [
                 'account' => $this->groceryAccountId,
                 'provider' => $account->provider->value,
                 'exception' => $e,
             ]);
+            $message = 'Sync failed unexpectedly. Please try again - if it keeps happening, check the application logs.';
             GrocerySyncSession::setState($this->syncSessionId, [
                 'status' => 'failed',
-                'message' => 'Sync failed unexpectedly. Please try again - if it keeps happening, check the application logs.',
+                'message' => $message,
             ]);
+            $this->finishReport(SyncRunStatus::Failed, 'Sync failed', $message);
         }
+    }
+
+    /**
+     * Reached when the worker kills the job (timeout) rather than handle()
+     * catching the error, so the report does not stay "running".
+     */
+    public function failed(?Throwable $e): void
+    {
+        Log::error('grocery.sync.errored', [
+            'account' => $this->groceryAccountId,
+            'exception' => $e,
+        ]);
+
+        $message = 'Sync failed unexpectedly. Please try again - if it keeps happening, check the application logs.';
+        GrocerySyncSession::setState($this->syncSessionId, [
+            'status' => 'failed',
+            'message' => $message,
+        ]);
+        $this->finishReport(SyncRunStatus::Failed, 'Sync failed', $message);
     }
 
     private function resolveToken(GroceryAccount $account, ProviderClient $client): ?ProviderToken
@@ -176,5 +212,24 @@ class SyncGroceryAccountJob implements ShouldQueue
             'imported' => $imported,
             'total_invoices' => count($invoices),
         ]);
+
+        $summary = match ($imported) {
+            0 => 'No new receipts',
+            1 => 'Imported 1 receipt',
+            default => "Imported {$imported} receipts",
+        };
+
+        $this->finishReport(SyncRunStatus::Succeeded, $summary, null, [
+            'imported' => $imported,
+            'total_invoices' => count($invoices),
+        ]);
+    }
+
+    /**
+     * @param  array<string, mixed>|null  $details
+     */
+    private function finishReport(SyncRunStatus $status, string $summary, ?string $message = null, ?array $details = null): void
+    {
+        SyncRun::query()->find($this->syncRunId)?->finish($status, $summary, $message, $details);
     }
 }

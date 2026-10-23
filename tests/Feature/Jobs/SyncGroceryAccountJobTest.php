@@ -2,10 +2,17 @@
 
 namespace Tests\Feature\Jobs;
 
+use App\Enums\SyncKind;
+use App\Enums\SyncRunStatus;
 use App\Jobs\SyncGroceryAccountJob;
 use App\Models\GroceryAccount;
+use App\Models\SyncRun;
+use App\Models\User;
+use App\Services\Receipts\Contracts\ProviderClient;
 use App\Services\Receipts\Maxi\MaxiClient;
+use App\Services\Receipts\Maxi\MaxiProvider;
 use App\Services\Receipts\Metro\MetroClient;
+use App\Services\Receipts\ReceiptException;
 use App\Services\Receipts\ReceiptImporter;
 use App\Support\GrocerySyncSession;
 use GuzzleHttp\Client;
@@ -13,10 +20,13 @@ use GuzzleHttp\Handler\MockHandler;
 use GuzzleHttp\HandlerStack;
 use GuzzleHttp\Psr7\Response;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Mockery;
+use Mockery\Adapter\Phpunit\MockeryPHPUnitIntegration;
 use Tests\TestCase;
 
 class SyncGroceryAccountJobTest extends TestCase
 {
+    use MockeryPHPUnitIntegration;
     use RefreshDatabase;
 
     private function fakeMaxiClient(array $responses): void
@@ -31,9 +41,12 @@ class SyncGroceryAccountJobTest extends TestCase
         $this->app->instance(MetroClient::class, new MetroClient($http));
     }
 
-    private function runSync(GroceryAccount $account, string $sessionId): void
+    private function runSync(GroceryAccount $account, string $sessionId): SyncRun
     {
-        (new SyncGroceryAccountJob($account->id, $sessionId))->handle(app(ReceiptImporter::class));
+        $run = SyncRun::open(User::factory()->admin()->create(), SyncKind::GrocerySync, $account, 'Syncing receipts');
+        (new SyncGroceryAccountJob($account->id, $sessionId, $run->id))->handle(app(ReceiptImporter::class));
+
+        return $run->fresh();
     }
 
     private function jwt(): string
@@ -91,6 +104,12 @@ class SyncGroceryAccountJobTest extends TestCase
         $this->assertNotNull($account->fresh()->access_token);
         $this->assertNotNull($account->fresh()->last_synced_at);
         $this->assertSame('done', GrocerySyncSession::getState($sessionId)['status']);
+
+        $run = SyncRun::query()->first();
+        $this->assertSame(SyncRunStatus::Succeeded, $run->status);
+        $this->assertSame('Imported 2 receipts', $run->summary);
+        $this->assertSame(2, $run->details['imported']);
+        $this->assertNotificationLinksTo($run);
     }
 
     public function test_uses_stored_password_without_a_session_password(): void
@@ -139,10 +158,13 @@ class SyncGroceryAccountJobTest extends TestCase
         $this->fakeMaxiClient([]);
 
         $sessionId = GrocerySyncSession::start($account->id);
-        $this->runSync($account, $sessionId);
+        $run = $this->runSync($account, $sessionId);
 
         $this->assertSame('needs_password', GrocerySyncSession::getState($sessionId)['status']);
+        $this->assertSame(SyncRunStatus::NeedsPassword, $run->status);
+        $this->assertStringContainsString('password', $run->message);
         $this->assertDatabaseCount('grocery_receipts', 0);
+        $this->assertSame('warning', $run->user->notifications()->first()->data['status']);
     }
 
     // --- Metro ------------------------------------------------------------
@@ -244,5 +266,59 @@ class SyncGroceryAccountJobTest extends TestCase
         $this->assertNotSame('s3cr3t-pw', $raw->password);
         $this->assertNotSame('rt-secret', $raw->refresh_token);
         $this->assertSame('s3cr3t-pw', $account->fresh()->password);
+    }
+
+    public function test_a_provider_error_is_stored_on_the_report(): void
+    {
+        $account = GroceryAccount::factory()->withValidToken()->create();
+        $client = Mockery::mock(ProviderClient::class);
+        $client->shouldReceive('listInvoices')->once()->andThrow(new ReceiptException('Unexpected GetInvoicesByUser status 500.'));
+        $this->app->instance(MaxiProvider::class, $client);
+
+        $sessionId = GrocerySyncSession::start($account->id);
+        $run = $this->runSync($account, $sessionId);
+
+        $this->assertSame(SyncRunStatus::Failed, $run->status);
+        $this->assertSame('Unexpected GetInvoicesByUser status 500.', $run->message);
+        $this->assertSame('danger', $run->user->notifications()->first()->data['status']);
+        $this->assertSame('failed', GrocerySyncSession::getState($sessionId)['status']);
+    }
+
+    public function test_an_unexpected_error_does_not_leak_into_the_report(): void
+    {
+        $account = GroceryAccount::factory()->withValidToken()->create();
+        $client = Mockery::mock(ProviderClient::class);
+        $client->shouldReceive('listInvoices')->once()->andThrow(new \RuntimeException('upstream body token=secret-value'));
+        $this->app->instance(MaxiProvider::class, $client);
+
+        $sessionId = GrocerySyncSession::start($account->id);
+        $run = $this->runSync($account, $sessionId);
+
+        $this->assertSame(SyncRunStatus::Failed, $run->status);
+        $this->assertStringNotContainsString('secret-value', (string) $run->message);
+        $this->assertStringContainsString('unexpectedly', (string) $run->message);
+    }
+
+    public function test_the_failed_hook_marks_the_report_failed(): void
+    {
+        $account = GroceryAccount::factory()->create();
+        $run = SyncRun::open(User::factory()->admin()->create(), SyncKind::GrocerySync, $account, 'Syncing receipts');
+        $sessionId = GrocerySyncSession::start($account->id);
+
+        (new SyncGroceryAccountJob($account->id, $sessionId, $run->id))->failed(new \RuntimeException('worker died'));
+
+        $run->refresh();
+        $this->assertSame(SyncRunStatus::Failed, $run->status);
+        $this->assertStringContainsString('unexpectedly', (string) $run->message);
+        $this->assertSame('failed', GrocerySyncSession::getState($sessionId)['status']);
+    }
+
+    private function assertNotificationLinksTo(SyncRun $run): void
+    {
+        $notification = $run->user->notifications()->first();
+        $this->assertNotNull($notification);
+        $this->assertSame('success', $notification->data['status']);
+        $this->assertSame('View report', $notification->data['actions'][0]['label']);
+        $this->assertStringContainsString('/admin/sync-reports/'.$run->id, $notification->data['actions'][0]['url']);
     }
 }

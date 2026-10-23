@@ -30,7 +30,12 @@
                         <li style="display: flex; align-items: center; justify-content: space-between; padding: 0.5rem 0; font-size: 0.875rem;">
                             <span>{{ $result['description'] }} ({{ $result['account_number'] }})</span>
                             @if ($result['failed'] ?? false)
-                                <x-filament::badge color="danger">failed</x-filament::badge>
+                                <span style="display: flex; align-items: center; gap: 0.5rem;">
+                                    <x-filament::badge color="danger">failed</x-filament::badge>
+                                    @if (filled($result['message'] ?? null))
+                                        <span>{{ $result['message'] }}</span>
+                                    @endif
+                                </span>
                             @else
                                 <x-filament::badge :color="$result['inserted'] > 0 ? 'success' : 'gray'">
                                     {{ $result['inserted'] }} new
@@ -144,7 +149,12 @@
                     <li class="flex items-center justify-between py-2 text-sm">
                         <span>{{ $result['description'] }} ({{ $result['account_number'] }})</span>
                         @if ($result['failed'] ?? false)
-                            <x-filament::badge color="danger">failed &ndash; see logs</x-filament::badge>
+                            <span style="display: flex; align-items: center; gap: 0.5rem;">
+                                <x-filament::badge color="danger">failed</x-filament::badge>
+                                @if (filled($result['message'] ?? null))
+                                    <span>{{ $result['message'] }}</span>
+                                @endif
+                            </span>
                         @else
                             <x-filament::badge :color="$result['inserted'] > 0 ? 'success' : 'gray'">
                                 {{ $result['inserted'] }} new

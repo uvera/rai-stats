@@ -2,10 +2,12 @@
 
 namespace Tests\Feature\Filament;
 
+use App\Enums\SyncRunStatus;
 use App\Filament\Pages\ImportTransactions;
 use App\Jobs\RaiffeisenImportJob;
 use App\Jobs\RaiffeisenLoginJob;
 use App\Models\Account;
+use App\Models\SyncRun;
 use App\Models\User;
 use App\Support\RaiffeisenImportSession;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -61,6 +63,11 @@ class ImportTransactionsPageTest extends TestCase
         Queue::assertPushed(RaiffeisenLoginJob::class);
 
         $this->assertSame('raiuser', $user->fresh()->raiffeisen_username);
+        $this->assertDatabaseHas('sync_runs', [
+            'user_id' => $user->id,
+            'kind' => 'bank_login',
+            'status' => 'running',
+        ]);
     }
 
     public function test_poll_transitions_to_select_and_creates_accounts_on_ready(): void
@@ -162,7 +169,7 @@ class ImportTransactionsPageTest extends TestCase
 
     public function test_poll_times_out_a_stuck_login(): void
     {
-        $this->actingUser();
+        $user = $this->actingUser();
         [$component, $sessionId] = $this->startedWizard();
 
         // Worker never ran: still 'pending', deadline in the past.
@@ -172,6 +179,14 @@ class ImportTransactionsPageTest extends TestCase
         ]);
 
         $component->call('poll')->assertSet('step', 'error');
+
+        $run = SyncRun::query()->where('user_id', $user->id)->first();
+        $this->assertSame(SyncRunStatus::Failed, $run->status);
+        $this->assertStringContainsString('background worker', (string) $run->message);
+        $notification = $user->notifications()->first();
+        $this->assertNotNull($notification);
+        $this->assertSame('danger', $notification->data['status']);
+        $this->assertStringContainsString('/admin/sync-reports/'.$run->id, $notification->data['actions'][0]['url']);
     }
 
     public function test_run_import_dispatches_the_job_and_enters_the_importing_step(): void
@@ -190,6 +205,10 @@ class ImportTransactionsPageTest extends TestCase
             ->assertSet('queuedRanges', []);
 
         Queue::assertPushed(RaiffeisenImportJob::class);
+        $this->assertDatabaseHas('sync_runs', [
+            'kind' => 'bank_import',
+            'status' => 'running',
+        ]);
     }
 
     public function test_poll_shows_progress_then_completes_the_import(): void

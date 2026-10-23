@@ -2,8 +2,11 @@
 
 namespace App\Jobs;
 
+use App\Enums\SyncRunStatus;
 use App\Models\Account;
+use App\Models\SyncRun;
 use App\Services\Raiffeisen\RaiffeisenClient;
+use App\Services\Raiffeisen\RaiffeisenException;
 use App\Services\Raiffeisen\TransactionImporter;
 use App\Support\DateRange;
 use App\Support\DateRangeMerger;
@@ -42,6 +45,7 @@ class RaiffeisenImportJob implements ShouldQueue
         private readonly string $importSessionId,
         private readonly int $userId,
         private readonly array $queuedRanges,
+        private readonly ?int $syncRunId = null,
     ) {}
 
     public function handle(): void
@@ -50,10 +54,7 @@ class RaiffeisenImportJob implements ShouldQueue
         $cookies = $state['cookies'] ?? null;
 
         if (empty($cookies)) {
-            RaiffeisenImportSession::setState($this->importSessionId, [
-                'status' => 'failed',
-                'message' => 'The login session expired before the import could run - please start over.',
-            ]);
+            $this->failRun('The login session expired before the import could run - please start over.');
 
             return;
         }
@@ -89,11 +90,13 @@ class RaiffeisenImportJob implements ShouldQueue
             'status' => 'done',
             'import_results' => $results,
         ]);
+
+        $this->finishRun($results);
     }
 
     /**
      * @param  array<int, array{account_number: string, from: string, to: string}>  $ranges
-     * @return array{account_number: string, description: string, inserted: int, failed: bool}
+     * @return array{account_number: string, description: string, inserted: int, failed: bool, message: ?string}
      */
     private function importAccount(RaiffeisenClient $client, TransactionImporter $importer, string $accountNumber, array $ranges): array
     {
@@ -110,7 +113,7 @@ class RaiffeisenImportJob implements ShouldQueue
                 'account' => $accountNumber,
             ]);
 
-            return ['account_number' => $accountNumber, 'description' => $accountNumber, 'inserted' => 0, 'failed' => true];
+            return $this->accountResult($accountNumber, $accountNumber, failed: true, message: 'This account could not be imported.');
         }
 
         $mergedRanges = DateRangeMerger::merge(
@@ -137,7 +140,15 @@ class RaiffeisenImportJob implements ShouldQueue
             $reserved = $client->transactionalAccountReservedFunds($accountNumber);
             DB::transaction(fn () => $importer->importReserved($account, $this->userId, $reserved));
 
-            return ['account_number' => $accountNumber, 'description' => $account->description, 'inserted' => $inserted, 'failed' => false];
+            return $this->accountResult($accountNumber, $account->description, inserted: $inserted);
+        } catch (RaiffeisenException $e) {
+            Log::warning('raiffeisen.import.account_failed', [
+                'session' => $this->importSessionId,
+                'account' => $accountNumber,
+                'reason' => $e->getMessage(),
+            ]);
+
+            return $this->accountResult($accountNumber, $account->description, failed: true, message: SyncRun::clip($e->getMessage()));
         } catch (Throwable $e) {
             Log::error('raiffeisen.import.account_failed', [
                 'session' => $this->importSessionId,
@@ -145,8 +156,71 @@ class RaiffeisenImportJob implements ShouldQueue
                 'exception' => $e,
             ]);
 
-            return ['account_number' => $accountNumber, 'description' => $account->description, 'inserted' => 0, 'failed' => true];
+            return $this->accountResult(
+                $accountNumber,
+                $account->description,
+                failed: true,
+                message: 'This account failed unexpectedly. Please try again - if it keeps happening, check the application logs.',
+            );
         }
+    }
+
+    /**
+     * @return array{account_number: string, description: string, inserted: int, failed: bool, message: ?string}
+     */
+    private function accountResult(string $accountNumber, string $description, int $inserted = 0, bool $failed = false, ?string $message = null): array
+    {
+        return [
+            'account_number' => $accountNumber,
+            'description' => $description,
+            'inserted' => $inserted,
+            'failed' => $failed,
+            'message' => $message,
+        ];
+    }
+
+    /**
+     * @param  array<int, array{account_number: string, description: string, inserted: int, failed: bool, message: ?string}>  $results
+     */
+    private function finishRun(array $results): void
+    {
+        $failed = collect($results)->where('failed', true)->count();
+        $total = count($results);
+        $inserted = (int) collect($results)->sum('inserted');
+        $ok = $total - $failed;
+
+        $status = match (true) {
+            $total === 0 || $failed === $total => SyncRunStatus::Failed,
+            $failed > 0 => SyncRunStatus::Partial,
+            default => SyncRunStatus::Succeeded,
+        };
+
+        $summary = match ($status) {
+            SyncRunStatus::Succeeded => 'Imported '.$inserted.' '.($inserted === 1 ? 'transaction' : 'transactions'),
+            SyncRunStatus::Partial => $ok.' '.($ok === 1 ? 'account' : 'accounts').' imported, '.$failed.' failed',
+            default => 'Import failed',
+        };
+
+        $message = $failed === 1
+            ? (collect($results)->firstWhere('failed', true)['message'] ?? null)
+            : null;
+
+        $this->report()?->finish($status, $summary, $message, ['accounts' => $results]);
+    }
+
+    private function failRun(string $message): void
+    {
+        RaiffeisenImportSession::setState($this->importSessionId, [
+            'status' => 'failed',
+            'message' => $message,
+        ]);
+
+        $this->report()?->finish(SyncRunStatus::Failed, 'Import failed', $message);
+    }
+
+    private function report(): ?SyncRun
+    {
+        return $this->syncRunId === null ? null : SyncRun::query()->find($this->syncRunId);
     }
 
     public function failed(?Throwable $e): void
@@ -156,9 +230,6 @@ class RaiffeisenImportJob implements ShouldQueue
             'exception' => $e,
         ]);
 
-        RaiffeisenImportSession::setState($this->importSessionId, [
-            'status' => 'failed',
-            'message' => 'The import failed unexpectedly. Please try again - if it keeps happening, check the application logs.',
-        ]);
+        $this->failRun('The import failed unexpectedly. Please try again - if it keeps happening, check the application logs.');
     }
 }

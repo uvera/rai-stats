@@ -2,9 +2,13 @@
 
 namespace App\Filament\Pages;
 
+use App\Enums\SyncKind;
+use App\Enums\SyncRunStatus;
 use App\Jobs\RaiffeisenImportJob;
 use App\Jobs\RaiffeisenLoginJob;
 use App\Models\Account;
+use App\Models\SyncRun;
+use App\Models\User;
 use App\Support\DateRange;
 use App\Support\DateRangeMerger;
 use App\Support\RaiffeisenImportSession;
@@ -14,7 +18,6 @@ use Filament\Forms\Components\CheckboxList;
 use Filament\Forms\Components\DatePicker;
 use Filament\Forms\Components\Select;
 use Filament\Forms\Components\TextInput;
-use Filament\Notifications\Notification;
 use Filament\Pages\Page;
 use Filament\Schemas\Schema;
 use Filament\Support\Icons\Heroicon;
@@ -181,18 +184,23 @@ class ImportTransactions extends Page
             'password' => ['required', 'string'],
         ]);
 
-        auth()->user()->update(['raiffeisen_username' => $this->username]);
+        /** @var User $user */
+        $user = auth()->user();
+        $user->update(['raiffeisen_username' => $this->username]);
 
-        $this->importSessionId = RaiffeisenImportSession::start(auth()->id());
+        $run = SyncRun::open($user, SyncKind::BankLogin, summary: 'Signing in to Raiffeisen');
+
+        $this->importSessionId = RaiffeisenImportSession::start($user->id);
         RaiffeisenImportSession::setPassword($this->importSessionId, $this->password);
         // Login incl. the mobile push wait is capped at ~3 minutes by the
         // client; give the poller a slightly longer deadline so a worker
         // that never picked the job up can't leave the wizard spinning.
         RaiffeisenImportSession::setState($this->importSessionId, [
             'poll_deadline' => now()->addSeconds(300)->timestamp,
+            'sync_run_id' => $run->id,
         ]);
 
-        RaiffeisenLoginJob::dispatch($this->importSessionId, $this->username);
+        RaiffeisenLoginJob::dispatch($this->importSessionId, $this->username, $run->id);
 
         // Never let the password linger in this component's state beyond
         // this request - it's already handed off to the job via its own
@@ -228,8 +236,19 @@ class ImportTransactions extends Page
         if (in_array($status, self::POLLED_STATUSES, true)
             && isset($state['poll_deadline'])
             && now()->timestamp > $state['poll_deadline']) {
-            $this->errorMessage = 'This is taking longer than expected - the background worker may not be running. Please try again.';
+            $message = 'This is taking longer than expected - the background worker may not be running. Please try again.';
+            $this->errorMessage = $message;
             $this->step = 'error';
+
+            // A stalled import keeps its running report. A login that never
+            // started is the failure the wizard already explains.
+            if ($status !== 'importing' && isset($state['sync_run_id'])) {
+                SyncRun::query()->find($state['sync_run_id'])?->finish(
+                    SyncRunStatus::Failed,
+                    'Login failed',
+                    $message,
+                );
+            }
 
             return;
         }
@@ -284,19 +303,12 @@ class ImportTransactions extends Page
     }
 
     /**
-     * @param  array<int, array{account_number: string, description: string, inserted: int, failed: bool}>  $results
+     * @param  array<int, array{account_number: string, description: string, inserted: int, failed: bool, message?: ?string}>  $results
      */
     private function handleImportComplete(array $results): void
     {
         $this->importResults = $results;
         $this->step = 'done';
-
-        $failed = collect($results)->where('failed', true)->count();
-
-        Notification::make()
-            ->title($failed === 0 ? 'Import complete' : "Import finished with {$failed} account(s) failing")
-            ->{$failed === 0 ? 'success' : 'warning'}()
-            ->send();
     }
 
     /**
@@ -421,13 +433,18 @@ class ImportTransactions extends Page
             return;
         }
 
+        /** @var User $user */
+        $user = auth()->user();
+        $run = SyncRun::open($user, SyncKind::BankImport, summary: 'Importing transactions');
+
         RaiffeisenImportSession::setState($this->importSessionId, [
             'status' => 'importing',
             'import_results' => [],
             'poll_deadline' => now()->addSeconds(900)->timestamp,
+            'sync_run_id' => $run->id,
         ]);
 
-        RaiffeisenImportJob::dispatch($this->importSessionId, auth()->id(), $this->queuedRanges);
+        RaiffeisenImportJob::dispatch($this->importSessionId, $user->id, $this->queuedRanges, $run->id);
 
         $this->importResults = [];
         $this->queuedRanges = [];
