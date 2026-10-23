@@ -23,13 +23,15 @@ class ArticlePurchasesTable extends TableWidget
         return $table
             ->stackedOnMobile()
             ->heading('Purchases')
-            ->query(fn () => ArticlePrices::history($this->record->name))
+            ->query(fn () => ArticlePrices::history($this->record->name)->reorder())
+            ->defaultSort('receipt.purchased_at', 'desc')
             ->paginated([10, 25, 50])
             ->recordUrl(fn (GroceryReceiptItem $record): string => GroceryReceiptResource::getUrl('view', ['record' => $record->grocery_receipt_id]))
             ->columns([
                 TextColumn::make('receipt.purchased_at')
                     ->label('Purchased')
-                    ->dateTime('d.m.Y H:i'),
+                    ->dateTime('d.m.Y H:i')
+                    ->sortable(),
                 TextColumn::make('receipt.provider')
                     ->label('Provider')
                     ->badge()
@@ -45,11 +47,13 @@ class ArticlePurchasesTable extends TableWidget
                 TextColumn::make('unit_price_cents')
                     ->label('Unit')
                     ->formatStateUsing(fn (int $state) => ArticlePrices::money($state))
-                    ->alignEnd(),
+                    ->alignEnd()
+                    ->sortable(),
                 TextColumn::make('total_cents')
                     ->label('Total')
                     ->formatStateUsing(fn (int $state) => ArticlePrices::money($state))
-                    ->alignEnd(),
+                    ->alignEnd()
+                    ->sortable(),
             ]);
     }
 }

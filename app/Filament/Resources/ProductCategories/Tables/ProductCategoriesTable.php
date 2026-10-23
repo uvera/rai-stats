@@ -16,10 +16,10 @@ class ProductCategoriesTable
             ->stackedOnMobile()
             ->defaultSort('name')
             ->columns([
-                TextColumn::make('name')->searchable(),
+                TextColumn::make('name')->searchable()->sortable(),
                 ColorColumn::make('color'),
-                TextColumn::make('rules_count')->label('Rules')->counts('rules'),
-                TextColumn::make('items_count')->label('Items')->counts('items'),
+                TextColumn::make('rules_count')->label('Rules')->counts('rules')->sortable(),
+                TextColumn::make('items_count')->label('Items')->counts('items')->sortable(),
             ])
             ->recordActions([
                 EditAction::make(),

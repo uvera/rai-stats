@@ -36,7 +36,7 @@ class ItemsRelationManager extends RelationManager
             ->defaultSort('line_no')
             ->columns([
                 TextColumn::make('line_no')->label('#')->sortable()->visibleFrom('sm'),
-                TextColumn::make('name')->label('Item')->wrap()->searchable(),
+                TextColumn::make('name')->label('Item')->wrap()->searchable()->sortable(),
                 TextColumn::make('quantity')
                     ->label('Qty')
                     ->formatStateUsing(fn ($state) => rtrim(rtrim(number_format((float) $state, 3), '0'), '.'))
@@ -46,6 +46,7 @@ class ItemsRelationManager extends RelationManager
                     ->label('Unit')
                     ->formatStateUsing(fn (int $state) => number_format($state / 100, 2))
                     ->alignEnd()
+                    ->sortable()
                     ->visibleFrom('lg'),
                 TextColumn::make('total_cents')
                     ->label('Total')
@@ -58,6 +59,7 @@ class ItemsRelationManager extends RelationManager
                     ->badge()
                     ->color('gray')
                     ->placeholder('Uncategorized')
+                    ->sortable()
                     ->visibleFrom('sm'),
             ])
             ->recordActions([

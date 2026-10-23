@@ -23,6 +23,7 @@ class ArticlePricesTable
                 TextColumn::make('name')
                     ->label('Article')
                     ->searchable()
+                    ->sortable()
                     ->wrap(),
                 TextColumn::make('times_bought')
                     ->label('Times bought')

@@ -172,7 +172,7 @@ class GroceriesSectionTest extends TestCase
 
         Livewire::test(ArticlePurchasesTable::class, ['record' => $firstMilk])
             ->assertOk()
-            ->assertCanSeeTableRecords([$firstMilk, $laterMilk])
+            ->assertCanSeeTableRecords([$laterMilk, $firstMilk], inOrder: true)
             ->assertSee('Maxi 40')
             ->assertSee('150.00');
 
@@ -181,6 +181,30 @@ class GroceriesSectionTest extends TestCase
             ->assertSee('Unit price over time')
             ->assertSee('100')
             ->assertSee('150');
+    }
+
+    public function test_article_purchase_history_sorts_by_unit_price(): void
+    {
+        $this->actingAs(User::factory()->create());
+
+        $older = GroceryReceipt::factory()->create(['purchased_at' => '2026-03-01 10:00:00']);
+        $newer = GroceryReceipt::factory()->create(['purchased_at' => '2026-06-01 10:00:00']);
+
+        $cheaper = GroceryReceiptItem::factory()->for($older, 'receipt')->create([
+            'name' => 'Milk',
+            'unit_price_cents' => 10000,
+            'total_cents' => 10000,
+        ]);
+        $pricier = GroceryReceiptItem::factory()->for($newer, 'receipt')->create([
+            'name' => 'Milk',
+            'unit_price_cents' => 15000,
+            'total_cents' => 15000,
+        ]);
+
+        Livewire::test(ArticlePurchasesTable::class, ['record' => $cheaper])
+            ->assertCanSeeTableRecords([$pricier, $cheaper], inOrder: true)
+            ->sortTable('unit_price_cents')
+            ->assertCanSeeTableRecords([$cheaper, $pricier], inOrder: true);
     }
 
     public function test_sync_actions_are_admin_only_on_the_accounts_table(): void

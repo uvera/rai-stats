@@ -47,8 +47,9 @@ class RulesRelationManager extends RelationManager
         return $table
             ->stackedOnMobile()
             ->recordTitleAttribute('pattern')
+            ->defaultSort('priority', 'desc')
             ->columns([
-                TextColumn::make('pattern')->searchable(),
+                TextColumn::make('pattern')->searchable()->sortable(),
                 TextColumn::make('priority')->sortable(),
             ])
             ->headerActions([

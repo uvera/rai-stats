@@ -32,9 +32,11 @@ class TransactionsTable
                     ->label('Account')
                     ->description(fn ($record) => $record->account?->number)
                     ->searchable()
+                    ->sortable()
                     ->visibleFrom('lg'),
                 TextColumn::make('place')
                     ->searchable()
+                    ->sortable()
                     ->wrap(),
                 TextColumn::make('description')
                     ->limit(40)
@@ -46,6 +48,7 @@ class TransactionsTable
                     ->badge()
                     ->color('gray')
                     ->placeholder('Uncategorized')
+                    ->sortable()
                     ->toggleable()
                     ->visibleFrom('lg'),
                 TextColumn::make('amount_cents')
@@ -66,6 +69,7 @@ class TransactionsTable
                     ->label('Owner')
                     ->badge()
                     ->color('gray')
+                    ->sortable()
                     ->toggleable()
                     ->visibleFrom('lg'),
             ])

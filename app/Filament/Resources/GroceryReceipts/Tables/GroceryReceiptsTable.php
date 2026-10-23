@@ -36,6 +36,7 @@ class GroceryReceiptsTable
                 TextColumn::make('store_name')
                     ->label('Store')
                     ->searchable()
+                    ->sortable()
                     ->description(fn (GroceryReceipt $record) => $record->store_address),
                 TextColumn::make('account.label')
                     ->label('Account')
@@ -46,6 +47,7 @@ class GroceryReceiptsTable
                 TextColumn::make('items_count')
                     ->label('Items')
                     ->counts('items')
+                    ->sortable()
                     ->visibleFrom('md'),
                 TextColumn::make('total_cents')
                     ->label('Total')
