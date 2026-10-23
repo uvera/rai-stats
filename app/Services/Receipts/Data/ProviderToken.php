@@ -19,8 +19,9 @@ readonly class ProviderToken
 
     /**
      * Builds the token from a bare access token, reading the expiry out of the
-     * JWT's own `exp` claim. Moj Maxi issues a plain ~365-day JWT; Metro a
-     * ~1-hour one - either way `exp` is authoritative.
+     * JWT's own `exp` claim. Moj Maxi's access JWT lasts minutes and may
+     * come with an opaque refresh token; Metro's lasts about an hour.
+     * Either way `exp` is authoritative.
      */
     public static function fromAccessToken(string $accessToken, ?string $refreshToken = null): self
     {

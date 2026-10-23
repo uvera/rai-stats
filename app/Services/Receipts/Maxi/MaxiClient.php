@@ -14,21 +14,22 @@ use GuzzleHttp\Client;
  * verified against the real app's traffic - it matches that specific
  * backend's undocumented shape, it is not a generic client.
  *
- * Note: login lives under /prod/A/, invoices under /prod/E/ - same host,
- * different path prefix.
+ * Note: account calls (login, device registration) live under
+ * /prod/A/api/AppEndUser/, invoices under /prod/E/ - same host, different
+ * path prefix. App 2.6.1 renamed these off /AppUser/.
  */
 class MaxiClient
 {
     private const ORIGIN = 'https://mobileloyalty-prod.delhaize.rs';
 
     /** Hard-coded app key the real client sends on every request (not a secret). */
-    private const APP_KEY = '07ef3b5a079f4f1a8f846f043adddbb8';
+    private const APP_KEY = '69672f6494e34a33835987cea15baf28';
 
     private const USER_AGENT = 'okhttp/4.9.2';
 
-    private const APP_VERSION = '2.5.6';
+    private const APP_VERSION = '2.6.1';
 
-    private const APP_BUILD = '338';
+    private const APP_BUILD = '342';
 
     private Client $http;
 
@@ -44,7 +45,7 @@ class MaxiClient
     public function login(string $email, string $password, string $deviceUuid): ProviderToken
     {
         $response = $this->http->post(
-            self::ORIGIN.'/prod/A/api/AppUser/GetAppUserByEmailAndPassword',
+            self::ORIGIN.'/prod/A/api/AppEndUser/GetAppUserByEmailAndPassword',
             [
                 'headers' => $this->baseHeaders($deviceUuid) + ['Content-Type' => 'application/json'],
                 'json' => [
@@ -70,11 +71,20 @@ class MaxiClient
 
         $token = $body['Data']['AccessToken'] ?? null;
 
+        // HTTP 200 with Status true and no token is how a rejected login
+        // comes back ("Data not found..."), not a transport error.
         if (! is_string($token) || $token === '') {
-            throw new ReceiptException('Login succeeded but no access token was returned.');
+            throw new ReceiptAuthException(
+                $body['Message'] ?? $body['Error'] ?? 'Moj Maxi rejected those credentials.'
+            );
         }
 
-        return ProviderToken::fromAccessToken($token);
+        $refresh = $body['Data']['RefreshToken'] ?? null;
+
+        return ProviderToken::fromAccessToken(
+            $token,
+            is_string($refresh) && $refresh !== '' ? $refresh : null,
+        );
     }
 
     /**
@@ -86,7 +96,7 @@ class MaxiClient
     public function registerDevice(string $accessToken, string $deviceUuid): void
     {
         $response = $this->http->post(
-            self::ORIGIN.'/prod/A/api/AppUser/InsertAppUserLoginTracker',
+            self::ORIGIN.'/prod/A/api/AppEndUser/InsertAppUserLoginTracker',
             [
                 'headers' => $this->authHeaders($accessToken, $deviceUuid) + ['Content-Type' => 'application/json'],
                 'json' => [

@@ -11,8 +11,10 @@ use App\Services\Receipts\ReceiptPdfParser;
 
 /**
  * Moj Maxi behind the shared ProviderClient contract. Line items come from
- * the eReceipt PDF's text layer (ReceiptPdfParser); the ~1-year token has no
- * refresh path, so refresh() always defers to a password login.
+ * the eReceipt PDF's text layer (ReceiptPdfParser). Login returns a
+ * short-lived access JWT plus an opaque refresh token; no refresh call was
+ * observed, so refresh() stays null and an expired token logs in again with
+ * the stored password.
  */
 class MaxiProvider implements ProviderClient
 {

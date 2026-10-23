@@ -7,17 +7,28 @@ use App\Services\Receipts\ReceiptAuthException;
 use GuzzleHttp\Client;
 use GuzzleHttp\Handler\MockHandler;
 use GuzzleHttp\HandlerStack;
+use GuzzleHttp\Middleware;
 use GuzzleHttp\Psr7\Response;
 use PHPUnit\Framework\TestCase;
+use Psr\Http\Message\RequestInterface;
 
 class MaxiClientTest extends TestCase
 {
-    private function client(array $responses): array
-    {
-        $mock = new MockHandler($responses);
-        $http = new Client(['handler' => HandlerStack::create($mock), 'http_errors' => false]);
+    /** @var array<int, array{request: RequestInterface}> */
+    private array $history = [];
 
-        return [new MaxiClient($http), $mock];
+    private function client(array $responses): MaxiClient
+    {
+        $this->history = [];
+        $stack = HandlerStack::create(new MockHandler($responses));
+        $stack->push(Middleware::history($this->history));
+
+        return new MaxiClient(new Client(['handler' => $stack, 'http_errors' => false]));
+    }
+
+    private function lastRequest(): RequestInterface
+    {
+        return $this->history[array_key_last($this->history)]['request'];
     }
 
     private function jwt(int $exp): string
@@ -27,20 +38,28 @@ class MaxiClientTest extends TestCase
 
     public function test_login_parses_token_expiry_from_jwt(): void
     {
-        $exp = now()->addYear()->timestamp;
-        [$client] = $this->client([
-            new Response(200, [], json_encode(['Status' => true, 'Data' => ['AccessToken' => $this->jwt($exp)]])),
+        $exp = now()->addMinutes(20)->timestamp;
+        $client = $this->client([
+            new Response(200, [], json_encode(['Status' => true, 'Data' => [
+                'AccessToken' => $this->jwt($exp),
+                'RefreshToken' => 'opaque-refresh',
+            ]])),
         ]);
 
         $result = $client->login('a@b.c', 'secret', 'dev-uuid');
 
         $this->assertSame($exp, $result->expiresAt->timestamp);
         $this->assertStringStartsWith('h.', $result->accessToken);
+        $this->assertSame('opaque-refresh', $result->refreshToken);
+        $this->assertSame(
+            'https://mobileloyalty-prod.delhaize.rs/prod/A/api/AppEndUser/GetAppUserByEmailAndPassword',
+            (string) $this->lastRequest()->getUri()
+        );
     }
 
     public function test_login_rejects_bad_credentials(): void
     {
-        [$client] = $this->client([
+        $client = $this->client([
             new Response(200, [], json_encode(['Status' => false, 'Message' => 'Wrong password'])),
         ]);
 
@@ -48,19 +67,42 @@ class MaxiClientTest extends TestCase
         $client->login('a@b.c', 'nope', 'dev-uuid');
     }
 
+    public function test_login_without_a_token_is_an_auth_failure(): void
+    {
+        $client = $this->client([
+            new Response(200, [], json_encode([
+                'Status' => true,
+                'Message' => 'Data not found...',
+                'Data' => null,
+            ])),
+        ]);
+
+        $this->expectException(ReceiptAuthException::class);
+        $this->expectExceptionMessage('Data not found...');
+        $client->login('a@b.c', 'nope', 'dev-uuid');
+    }
+
     public function test_register_device_accepts_a_200(): void
     {
-        [$client] = $this->client([
+        $client = $this->client([
             new Response(200, [], json_encode(['Status' => true, 'Data' => ['Id' => 42]])),
         ]);
 
         $client->registerDevice('token', 'dev-uuid');
-        $this->addToAssertionCount(1);
+
+        $request = $this->lastRequest();
+        $this->assertSame(
+            'https://mobileloyalty-prod.delhaize.rs/prod/A/api/AppEndUser/InsertAppUserLoginTracker',
+            (string) $request->getUri()
+        );
+        $body = json_decode((string) $request->getBody(), true);
+        $this->assertSame('2.6.1', $body['Version']);
+        $this->assertSame('342', $body['BuildNumber']);
     }
 
     public function test_register_device_raises_auth_exception_on_401(): void
     {
-        [$client] = $this->client([new Response(401, [], 'nope')]);
+        $client = $this->client([new Response(401, [], 'nope')]);
 
         $this->expectException(ReceiptAuthException::class);
         $client->registerDevice('stale', 'dev-uuid');
@@ -68,7 +110,7 @@ class MaxiClientTest extends TestCase
 
     public function test_list_invoices_maps_rows(): void
     {
-        [$client] = $this->client([
+        $client = $this->client([
             new Response(200, [], json_encode(['Status' => true, 'Data' => [
                 [
                     'InvoiceNumberHash' => 'abc123',
@@ -94,7 +136,7 @@ class MaxiClientTest extends TestCase
 
     public function test_list_invoices_raises_auth_exception_on_401(): void
     {
-        [$client] = $this->client([new Response(401, [], 'nope')]);
+        $client = $this->client([new Response(401, [], 'nope')]);
 
         $this->expectException(ReceiptAuthException::class);
         $client->listInvoices('stale-token', 'dev-uuid');
@@ -102,7 +144,7 @@ class MaxiClientTest extends TestCase
 
     public function test_download_receipt_returns_bytes(): void
     {
-        [$client] = $this->client([new Response(200, ['Content-Type' => 'application/pdf'], '%PDF-1.4 fake')]);
+        $client = $this->client([new Response(200, ['Content-Type' => 'application/pdf'], '%PDF-1.4 fake')]);
 
         $this->assertSame('%PDF-1.4 fake', $client->downloadReceipt('https://example.test/eReceipt/x', 'dev-uuid'));
     }
