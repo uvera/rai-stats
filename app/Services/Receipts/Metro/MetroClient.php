@@ -11,7 +11,7 @@ use Illuminate\Support\Str;
 /**
  * Talks to Metro's "Companion" backend: OAuth2 at idam.metrosystems.net,
  * everything else at api.metronom.dev. Verified against the real Android
- * app's traffic (build 3.83.1) - it is not a generic OAuth client.
+ * app's traffic (Companion 3.86/33682) - it is not a generic OAuth client.
  *
  * Unlike Moj Maxi the access token lives only ~1 hour, so callers are
  * expected to keep the refresh token and call refresh() on every sync.
@@ -30,7 +30,7 @@ class MetroClient
     /** Realm for RS retail customers. */
     private const REALM = 'ALEX_REALM';
 
-    private const USER_AGENT = 'Companion/;de.metro.alex.customer.digitalcard.metro (3.83.1/33604); Google sdk_gphone_x86_64 (Android 13)';
+    private const USER_AGENT = 'Companion/;de.metro.alex.customer.digitalcard.metro (3.86/33682); Google sdk_gphone_x86_64 (Android 11); en_US';
 
     private Client $http;
 
@@ -136,7 +136,9 @@ class MetroClient
     private function token(array $extra): ProviderToken
     {
         $response = $this->http->post(self::IDAM.'/authorize/api/oauth2/access_token', [
-            'headers' => ['Accept' => 'application/json'],
+            // The edge 403s a token call that has no correlation id. The app
+            // sends the same id under both header names.
+            'headers' => ['Accept' => 'application/json'] + $this->correlationHeaders(),
             'form_params' => [
                 'client_id' => self::CLIENT_ID,
                 'client_secret' => self::CLIENT_SECRET,
@@ -146,7 +148,19 @@ class MetroClient
         ]);
 
         $status = $response->getStatusCode();
-        $body = $this->decodeJson((string) $response->getBody());
+        $raw = (string) $response->getBody();
+
+        if (str_starts_with($raw, "\xEF\xBB\xBF")) {
+            $raw = substr($raw, 3);
+        }
+
+        $body = json_decode($raw, true);
+
+        // The edge answers a blocked login with an HTML page. Decoding that
+        // as JSON hides the status behind a syntax error.
+        if (! is_array($body)) {
+            throw new ReceiptException("Metro token request was blocked ({$status}).");
+        }
 
         if (in_array($status, [400, 401], true)) {
             throw new ReceiptAuthException(
@@ -189,16 +203,25 @@ class MetroClient
     /**
      * @return array<string, string>
      */
-    private function authHeaders(string $accessToken): array
+    private function correlationHeaders(): array
     {
         $correlationId = (string) Str::uuid();
 
         return [
-            'Authorization' => 'Bearer '.$accessToken,
-            'Accept' => 'application/json, text/plain, */*',
             'X-Correlation-Id' => $correlationId,
             'Calltreeid' => $correlationId,
         ];
+    }
+
+    /**
+     * @return array<string, string>
+     */
+    private function authHeaders(string $accessToken): array
+    {
+        return [
+            'Authorization' => 'Bearer '.$accessToken,
+            'Accept' => 'application/json, text/plain, */*',
+        ] + $this->correlationHeaders();
     }
 
     /**

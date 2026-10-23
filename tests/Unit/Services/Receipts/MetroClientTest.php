@@ -4,20 +4,27 @@ namespace Tests\Unit\Services\Receipts;
 
 use App\Services\Receipts\Metro\MetroClient;
 use App\Services\Receipts\ReceiptAuthException;
+use App\Services\Receipts\ReceiptException;
 use GuzzleHttp\Client;
 use GuzzleHttp\Handler\MockHandler;
 use GuzzleHttp\HandlerStack;
+use GuzzleHttp\Middleware;
 use GuzzleHttp\Psr7\Response;
 use PHPUnit\Framework\TestCase;
+use Psr\Http\Message\RequestInterface;
 
 class MetroClientTest extends TestCase
 {
+    /** @var array<int, array{request: RequestInterface}> */
+    private array $history = [];
+
     private function client(array $responses): MetroClient
     {
-        $mock = new MockHandler($responses);
-        $http = new Client(['handler' => HandlerStack::create($mock), 'http_errors' => false]);
+        $this->history = [];
+        $stack = HandlerStack::create(new MockHandler($responses));
+        $stack->push(Middleware::history($this->history));
 
-        return new MetroClient($http);
+        return new MetroClient(new Client(['handler' => $stack, 'http_errors' => false]));
     }
 
     private function jwt(int $exp): string
@@ -40,6 +47,10 @@ class MetroClientTest extends TestCase
 
         $this->assertSame($exp, $token->expiresAt->timestamp);
         $this->assertSame('rt-123', $token->refreshToken);
+        $request = $this->history[0]['request'];
+        $correlationId = $request->getHeaderLine('X-Correlation-Id');
+        $this->assertNotSame('', $correlationId);
+        $this->assertSame($correlationId, $request->getHeaderLine('Calltreeid'));
     }
 
     public function test_rejected_credentials_raise_auth_exception(): void
@@ -50,6 +61,17 @@ class MetroClientTest extends TestCase
 
         $this->expectException(ReceiptAuthException::class);
         $client->login('a@b.c', 'nope');
+    }
+
+    public function test_html_block_is_reported_by_status(): void
+    {
+        $client = $this->client([
+            new Response(403, [], '<HTML><HEAD><TITLE>Access Denied</TITLE></HEAD><BODY>'),
+        ]);
+
+        $this->expectException(ReceiptException::class);
+        $this->expectExceptionMessage('Metro token request was blocked (403).');
+        $client->login('a@b.c', 'secret');
     }
 
     public function test_list_invoices_paginates(): void
