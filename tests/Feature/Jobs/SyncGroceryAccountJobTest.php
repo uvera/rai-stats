@@ -9,6 +9,7 @@ use App\Models\GroceryAccount;
 use App\Models\SyncRun;
 use App\Models\User;
 use App\Services\Receipts\Contracts\ProviderClient;
+use App\Services\Receipts\GroceryAccountAuthenticator;
 use App\Services\Receipts\Maxi\MaxiClient;
 use App\Services\Receipts\Maxi\MaxiProvider;
 use App\Services\Receipts\Metro\MetroClient;
@@ -44,7 +45,10 @@ class SyncGroceryAccountJobTest extends TestCase
     private function runSync(GroceryAccount $account, string $sessionId): SyncRun
     {
         $run = SyncRun::open(User::factory()->admin()->create(), SyncKind::GrocerySync, $account, 'Syncing receipts');
-        (new SyncGroceryAccountJob($account->id, $sessionId, $run->id))->handle(app(ReceiptImporter::class));
+        (new SyncGroceryAccountJob($account->id, $sessionId, $run->id))->handle(
+            app(ReceiptImporter::class),
+            app(GroceryAccountAuthenticator::class),
+        );
 
         return $run->fresh();
     }

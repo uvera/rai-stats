@@ -34,7 +34,7 @@ class SyncRunInfolist
                         TextEntry::make('groceryAccount.label')
                             ->label('Account')
                             ->placeholder('—')
-                            ->visible(fn (SyncRun $record) => $record->kind === SyncKind::GrocerySync),
+                            ->visible(fn (SyncRun $record) => in_array($record->kind, [SyncKind::GrocerySync, SyncKind::PromotionRefresh], true)),
                         TextEntry::make('summary')->columnSpanFull(),
                         TextEntry::make('message')->placeholder('—')->columnSpanFull(),
                     ]),
@@ -50,6 +50,20 @@ class SyncRunInfolist
                         TextEntry::make('total_invoices')
                             ->label('Invoices on the account')
                             ->state(fn (SyncRun $record) => $record->details['total_invoices'] ?? null)
+                            ->placeholder('—'),
+                    ]),
+
+                Section::make('Promotions')
+                    ->columns(2)
+                    ->visible(fn (SyncRun $record) => $record->kind === SyncKind::PromotionRefresh && is_array($record->details))
+                    ->schema([
+                        TextEntry::make('promotions')
+                            ->label('Promotions cached')
+                            ->state(fn (SyncRun $record) => $record->details['promotions'] ?? null)
+                            ->placeholder('—'),
+                        TextEntry::make('matches')
+                            ->label('Matching articles you buy')
+                            ->state(fn (SyncRun $record) => $record->details['matches'] ?? null)
                             ->placeholder('—'),
                     ]),
 

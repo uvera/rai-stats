@@ -51,6 +51,11 @@ class SyncRunNotifier
                 SyncRunStatus::NeedsPassword => 'Grocery sync needs a password',
                 default => 'Grocery sync failed',
             },
+            SyncKind::PromotionRefresh => match ($run->status) {
+                SyncRunStatus::Succeeded => 'Promotion refresh finished',
+                SyncRunStatus::NeedsPassword => 'Promotion refresh needs a password',
+                default => 'Promotion refresh failed',
+            },
             SyncKind::BankImport => match ($run->status) {
                 SyncRunStatus::Succeeded => 'Import finished',
                 SyncRunStatus::Partial => 'Import finished with errors',

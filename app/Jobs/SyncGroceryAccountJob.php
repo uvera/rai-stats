@@ -8,6 +8,7 @@ use App\Models\SyncRun;
 use App\Services\Receipts\Contracts\ProviderClient;
 use App\Services\Receipts\Data\InvoiceSummary;
 use App\Services\Receipts\Data\ProviderToken;
+use App\Services\Receipts\GroceryAccountAuthenticator;
 use App\Services\Receipts\ReceiptAuthException;
 use App\Services\Receipts\ReceiptException;
 use App\Services\Receipts\ReceiptImporter;
@@ -52,7 +53,7 @@ class SyncGroceryAccountJob implements ShouldQueue
         return [(new WithoutOverlapping($this->groceryAccountId))->dontRelease()];
     }
 
-    public function handle(ReceiptImporter $importer): void
+    public function handle(ReceiptImporter $importer, GroceryAccountAuthenticator $authenticator): void
     {
         $account = GroceryAccount::find($this->groceryAccountId);
 
@@ -71,7 +72,7 @@ class SyncGroceryAccountJob implements ShouldQueue
         try {
             GrocerySyncSession::setState($this->syncSessionId, ['status' => 'running']);
 
-            $token = $this->resolveToken($account, $client);
+            $token = $this->resolveToken($account, $client, $authenticator);
 
             if ($token === null) {
                 $message = "Enter the {$account->provider->label()} password to sign in again.";
@@ -144,21 +145,13 @@ class SyncGroceryAccountJob implements ShouldQueue
         $this->finishReport(SyncRunStatus::Failed, 'Sync failed', $message);
     }
 
-    private function resolveToken(GroceryAccount $account, ProviderClient $client): ?ProviderToken
+    private function resolveToken(GroceryAccount $account, ProviderClient $client, GroceryAccountAuthenticator $authenticator): ?ProviderToken
     {
-        if ($account->tokenValid()) {
-            return new ProviderToken(
-                $account->access_token,
-                $account->token_expires_at->toImmutable(),
-                $account->refresh_token,
-            );
+        if (($token = $authenticator->unattended($account, $client)) !== null) {
+            return $token;
         }
 
-        if (($refreshed = $client->refresh($account)) !== null) {
-            return $this->persist($account, $refreshed);
-        }
-
-        $password = $account->password ?: GrocerySyncSession::takePassword($this->syncSessionId);
+        $password = GrocerySyncSession::takePassword($this->syncSessionId);
 
         if (blank($password)) {
             return null;
@@ -167,18 +160,7 @@ class SyncGroceryAccountJob implements ShouldQueue
         $token = $client->login($account, $password);
         unset($password);
 
-        return $this->persist($account, $token);
-    }
-
-    private function persist(GroceryAccount $account, ProviderToken $token): ProviderToken
-    {
-        $account->forceFill([
-            'access_token' => $token->accessToken,
-            'refresh_token' => $token->refreshToken ?? $account->refresh_token,
-            'token_expires_at' => $token->expiresAt,
-        ])->save();
-
-        return $token;
+        return $authenticator->persist($account, $token);
     }
 
     private function syncReceipts(GroceryAccount $account, ProviderClient $client, ReceiptImporter $importer, ProviderToken $token): void

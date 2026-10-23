@@ -24,7 +24,7 @@ class SyncRunPolicy
             return true;
         }
 
-        return $user->isAdmin() && $syncRun->kind === SyncKind::GrocerySync;
+        return $user->isAdmin() && in_array($syncRun->kind, [SyncKind::GrocerySync, SyncKind::PromotionRefresh], true);
     }
 
     public function create(User $user): bool

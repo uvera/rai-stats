@@ -19,6 +19,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 #[Fillable([
     'provider', 'label', 'email', 'password', 'access_token', 'refresh_token',
     'token_expires_at', 'device_uuid', 'user_id', 'external_id', 'last_synced_at',
+    'promotions_synced_at',
 ])]
 #[Hidden(['password', 'access_token', 'refresh_token'])]
 class GroceryAccount extends Model
@@ -47,12 +48,18 @@ class GroceryAccount extends Model
             'refresh_token' => 'encrypted',
             'token_expires_at' => 'datetime',
             'last_synced_at' => 'datetime',
+            'promotions_synced_at' => 'datetime',
         ];
     }
 
     public function receipts(): HasMany
     {
         return $this->hasMany(GroceryReceipt::class);
+    }
+
+    public function promotions(): HasMany
+    {
+        return $this->hasMany(MetroPromotion::class);
     }
 
     /**

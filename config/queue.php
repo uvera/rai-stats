@@ -40,7 +40,10 @@ return [
             'connection' => env('DB_QUEUE_CONNECTION'),
             'table' => env('DB_QUEUE_TABLE', 'jobs'),
             'queue' => env('DB_QUEUE', 'default'),
-            'retry_after' => (int) env('DB_QUEUE_RETRY_AFTER', 90),
+            // Longer than the longest job timeout (RaiffeisenImportJob, 600s).
+            // A shorter wait redelivers a running job, and tries=1 then fails it
+            // before the first attempt can finish.
+            'retry_after' => (int) env('DB_QUEUE_RETRY_AFTER', 660),
             'after_commit' => false,
         ],
 

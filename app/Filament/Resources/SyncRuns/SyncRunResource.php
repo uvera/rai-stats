@@ -58,7 +58,7 @@ class SyncRunResource extends Resource
             $query->where('user_id', $user->id);
 
             if ($user->isAdmin()) {
-                $query->orWhere('kind', SyncKind::GrocerySync);
+                $query->orWhereIn('kind', [SyncKind::GrocerySync, SyncKind::PromotionRefresh]);
             }
         });
     }

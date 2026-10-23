@@ -6,6 +6,7 @@ use App\Services\Receipts\Data\ProviderToken;
 use App\Services\Receipts\ReceiptAuthException;
 use App\Services\Receipts\ReceiptException;
 use GuzzleHttp\Client;
+use GuzzleHttp\Exception\TransferException;
 use Illuminate\Support\Str;
 
 /**
@@ -110,6 +111,44 @@ class MetroClient
         return $body['articles'] ?? [];
     }
 
+    /**
+     * Every ranked promotion for one store card.
+     *
+     * Pages follow `nextPage` until it is missing, a page comes back empty,
+     * or 40 pages have been read. A 5xx or a timeout is retried twice; if it
+     * still fails the call throws and nothing is returned, so the caller can
+     * keep the previous cache.
+     *
+     * @return array<int, array<string, mixed>>
+     */
+    public function listRankedPromotions(string $accessToken, string $country, string $store, string $cardholderId): array
+    {
+        $country = strtolower($country);
+        $articles = [];
+        $page = 1;
+        $pagesRead = 0;
+
+        while ($pagesRead < 40) {
+            $body = $this->getRankedPage($accessToken, $country, $store, $cardholderId, $page);
+            $pagesRead++;
+            $batch = $body['articleResults'] ?? [];
+
+            if ($batch === []) {
+                break;
+            }
+
+            $articles = [...$articles, ...$batch];
+
+            if (! isset($body['nextPage']) || $body['nextPage'] === '' || $body['nextPage'] === null) {
+                break;
+            }
+
+            $page = (int) $body['nextPage'];
+        }
+
+        return $articles;
+    }
+
     public function downloadPdf(string $accessToken, string $transactionId): string
     {
         $response = $this->http->get(
@@ -179,6 +218,52 @@ class MetroClient
         }
 
         return ProviderToken::fromAccessToken($token, $body['refresh_token'] ?? null);
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function getRankedPage(string $accessToken, string $country, string $store, string $cardholderId, int $page): array
+    {
+        $path = '/tailored-assortment/v2/'.rawurlencode($country)
+            .'/ranked-promotions/store/'.rawurlencode($store)
+            .'?locale=en-US&cardholderId='.rawurlencode($cardholderId)
+            .'&pageNumber='.$page.'&scope=store';
+
+        $attempts = 0;
+
+        while (true) {
+            $attempts++;
+
+            try {
+                $response = $this->http->get(self::API.$path, [
+                    'headers' => $this->authHeaders($accessToken),
+                    'timeout' => 45,
+                ]);
+            } catch (TransferException) {
+                if ($attempts < 3) {
+                    continue;
+                }
+
+                throw new ReceiptException('Metro promotions request timed out.');
+            }
+
+            $status = $response->getStatusCode();
+
+            if ($status === 401) {
+                throw new ReceiptAuthException('The stored Metro token is no longer valid.');
+            }
+
+            if ($status >= 500 && $status < 600 && $attempts < 3) {
+                continue;
+            }
+
+            if ($status !== 200) {
+                throw new ReceiptException("Unexpected Metro status {$status} for {$path}.");
+            }
+
+            return $this->decodeJson((string) $response->getBody());
+        }
     }
 
     /**

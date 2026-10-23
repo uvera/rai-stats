@@ -6,9 +6,11 @@ use App\Services\Receipts\Metro\MetroClient;
 use App\Services\Receipts\ReceiptAuthException;
 use App\Services\Receipts\ReceiptException;
 use GuzzleHttp\Client;
+use GuzzleHttp\Exception\ConnectException;
 use GuzzleHttp\Handler\MockHandler;
 use GuzzleHttp\HandlerStack;
 use GuzzleHttp\Middleware;
+use GuzzleHttp\Psr7\Request;
 use GuzzleHttp\Psr7\Response;
 use PHPUnit\Framework\TestCase;
 use Psr\Http\Message\RequestInterface;
@@ -102,5 +104,140 @@ class MetroClientTest extends TestCase
 
         $this->expectException(ReceiptAuthException::class);
         $client->listInvoices('stale');
+    }
+
+    public function test_ranked_promotions_follow_next_page(): void
+    {
+        $client = $this->client([
+            new Response(200, [], json_encode($this->promoPage('Soap', 2))),
+            new Response(200, [], json_encode($this->promoPage('Rum', null))),
+        ]);
+
+        $rows = $client->listRankedPromotions('token', 'rs', '22', 'RS_22_1');
+
+        $this->assertSame(['Soap', 'Rum'], array_column($rows, 'name'));
+
+        $first = $this->history[0]['request'];
+        $this->assertSame(
+            '/tailored-assortment/v2/rs/ranked-promotions/store/22',
+            $first->getUri()->getPath()
+        );
+        parse_str($first->getUri()->getQuery(), $query);
+        $this->assertSame('en-US', $query['locale']);
+        $this->assertSame('RS_22_1', $query['cardholderId']);
+        $this->assertSame('1', $query['pageNumber']);
+        $this->assertSame('store', $query['scope']);
+        $this->assertSame('Bearer token', $first->getHeaderLine('Authorization'));
+
+        parse_str($this->history[1]['request']->getUri()->getQuery(), $second);
+        $this->assertSame('2', $second['pageNumber']);
+    }
+
+    public function test_ranked_promotions_stop_on_an_empty_page(): void
+    {
+        $client = $this->client([
+            new Response(200, [], json_encode($this->promoPage('Soap', 2))),
+            new Response(200, [], json_encode(['articleResults' => [], 'nextPage' => 3])),
+            new Response(200, [], json_encode($this->promoPage('Should not be fetched', 4))),
+        ]);
+
+        $rows = $client->listRankedPromotions('token', 'RS', '22', 'RS_22_1');
+
+        $this->assertSame(['Soap'], array_column($rows, 'name'));
+        $this->assertCount(2, $this->history);
+        $this->assertSame(
+            '/tailored-assortment/v2/rs/ranked-promotions/store/22',
+            $this->history[0]['request']->getUri()->getPath()
+        );
+    }
+
+    public function test_ranked_promotions_401_raises_auth_exception(): void
+    {
+        $client = $this->client([
+            new Response(200, [], json_encode($this->promoPage('Soap', 2))),
+            new Response(401, [], 'nope'),
+        ]);
+
+        $this->expectException(ReceiptAuthException::class);
+        $client->listRankedPromotions('token', 'rs', '22', 'RS_22_1');
+    }
+
+    public function test_ranked_promotions_5xx_retries_then_throws_without_a_partial_list(): void
+    {
+        $client = $this->client([
+            new Response(200, [], json_encode($this->promoPage('Soap', 2))),
+            new Response(504, [], 'gateway'),
+            new Response(504, [], 'gateway'),
+            new Response(504, [], 'gateway'),
+        ]);
+
+        try {
+            $client->listRankedPromotions('token', 'rs', '22', 'RS_22_1');
+            $this->fail('A failed page should not return a partial list.');
+        } catch (ReceiptException $e) {
+            $this->assertStringNotContainsString('Soap', $e->getMessage());
+        }
+
+        $this->assertCount(4, $this->history);
+    }
+
+    public function test_ranked_promotions_retry_a_timeout(): void
+    {
+        $client = $this->client([
+            new ConnectException('cURL error 28', new Request('GET', 'https://api.metronom.dev/promo')),
+            new Response(200, [], json_encode($this->promoPage('Soap', null))),
+        ]);
+
+        $rows = $client->listRankedPromotions('token', 'rs', '22', 'RS_22_1');
+
+        $this->assertSame(['Soap'], array_column($rows, 'name'));
+        $this->assertCount(2, $this->history);
+    }
+
+    public function test_ranked_promotions_give_up_after_three_timeouts(): void
+    {
+        $timeout = new ConnectException('cURL error 28', new Request('GET', 'https://api.metronom.dev/promo'));
+        $client = $this->client([$timeout, $timeout, $timeout]);
+
+        try {
+            $client->listRankedPromotions('token', 'rs', '22', 'RS_22_1');
+            $this->fail('A timed out page should not return a partial list.');
+        } catch (ReceiptException $e) {
+            $this->assertSame('Metro promotions request timed out.', $e->getMessage());
+        }
+
+        $this->assertCount(3, $this->history);
+    }
+
+    public function test_ranked_promotions_stop_after_forty_pages(): void
+    {
+        $responses = [];
+        for ($page = 1; $page <= 41; $page++) {
+            $responses[] = new Response(200, [], json_encode($this->promoPage('Item '.$page, $page + 1)));
+        }
+
+        $client = $this->client($responses);
+        $rows = $client->listRankedPromotions('token', 'rs', '22', 'RS_22_1');
+
+        $this->assertCount(40, $rows);
+        $this->assertCount(40, $this->history);
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function promoPage(string $name, ?int $nextPage): array
+    {
+        $page = [
+            'articleResults' => [['name' => $name]],
+            'personalized' => true,
+            'numberOfArticles' => 1,
+        ];
+
+        if ($nextPage !== null) {
+            $page['nextPage'] = $nextPage;
+        }
+
+        return $page;
     }
 }

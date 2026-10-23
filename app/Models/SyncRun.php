@@ -67,6 +67,15 @@ class SyncRun extends Model
             ->exists();
     }
 
+    public static function promotionRefreshInProgress(int $groceryAccountId): bool
+    {
+        return self::query()
+            ->where('grocery_account_id', $groceryAccountId)
+            ->where('kind', SyncKind::PromotionRefresh)
+            ->where('status', SyncRunStatus::Running)
+            ->exists();
+    }
+
     /**
      * Moves a running report to a terminal state and notifies its owner.
      * A second call is a no-op, so a job's failed() hook can safely repeat it.
