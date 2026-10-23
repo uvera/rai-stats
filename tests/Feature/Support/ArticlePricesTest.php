@@ -57,9 +57,11 @@ class ArticlePricesTest extends TestCase
         $this->assertSame(20000, $rows['Milk']['max_unit_price_cents']);
         $this->assertSame(15000, $rows['Milk']['avg_unit_price_cents']);
         $this->assertSame(20000, $rows['Milk']['last_unit_price_cents']);
+        $this->assertSame(100.0, $rows['Milk']['raise_since_cheapest_percent']);
         $this->assertSame('2026-07-01 10:00:00', $rows['Milk']['last_purchased_at']->format('Y-m-d H:i:s'));
         $this->assertEqualsCanonicalizing(['Moj Maxi', 'Metro'], $rows['Milk']['providers']);
         $this->assertSame(8000, $rows['Bread']['last_unit_price_cents']);
+        $this->assertSame(0.0, $rows['Bread']['raise_since_cheapest_percent']);
         $this->assertSame(1, $rows['Bread']['times_bought']);
 
         $history = ArticlePrices::history('Milk')->get();
@@ -78,6 +80,7 @@ class ArticlePricesTest extends TestCase
         $this->assertSame($metroMilk->id, $filtered['Milk']['id']);
         $this->assertSame(1, $filtered['Milk']['times_bought']);
         $this->assertSame(20000, $filtered['Milk']['last_unit_price_cents']);
+        $this->assertSame(0.0, $filtered['Milk']['raise_since_cheapest_percent']);
         $this->assertSame(['Metro'], $filtered['Milk']['providers']);
     }
 
@@ -101,7 +104,29 @@ class ArticlePricesTest extends TestCase
         $summary = ArticlePrices::summary('Yogurt');
 
         $this->assertSame(999, $summary['last_unit_price_cents']);
+        $this->assertSame(899.0, $summary['raise_since_cheapest_percent']);
         $this->assertSame($later->id, ArticlePrices::history('Yogurt')->first()->id);
+    }
+
+    public function test_raise_compares_the_last_price_with_the_cheapest_not_the_earliest(): void
+    {
+        $earliest = GroceryReceipt::factory()->create(['purchased_at' => '2026-01-01 10:00:00']);
+        $cheapest = GroceryReceipt::factory()->create(['purchased_at' => '2026-02-01 10:00:00']);
+        $latest = GroceryReceipt::factory()->create(['purchased_at' => '2026-03-01 10:00:00']);
+
+        GroceryReceiptItem::factory()->for($earliest, 'receipt')->create([
+            'line_no' => 1, 'name' => 'Eggs', 'unit_price_cents' => 20000,
+        ]);
+        GroceryReceiptItem::factory()->for($cheapest, 'receipt')->create([
+            'line_no' => 1, 'name' => 'Eggs', 'unit_price_cents' => 10000,
+        ]);
+        GroceryReceiptItem::factory()->for($latest, 'receipt')->create([
+            'line_no' => 1, 'name' => 'Eggs', 'unit_price_cents' => 15000,
+        ]);
+
+        $this->assertSame(50.0, ArticlePrices::summary('Eggs')['raise_since_cheapest_percent']);
+        $this->assertSame('+50.0%', ArticlePrices::formatRaise(50.0));
+        $this->assertSame('—', ArticlePrices::formatRaise(null));
     }
 
     public function test_summary_returns_null_for_an_unknown_name(): void

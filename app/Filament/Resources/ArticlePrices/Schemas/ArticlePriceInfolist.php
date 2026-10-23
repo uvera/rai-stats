@@ -26,6 +26,15 @@ class ArticlePriceInfolist
                         ->label('Last')
                         ->state(fn (GroceryReceiptItem $record): int => $summary($record)['last_unit_price_cents'])
                         ->formatStateUsing(fn (int $state): string => ArticlePrices::money($state)),
+                    TextEntry::make('raise_since_cheapest_percent')
+                        ->label('Since cheapest')
+                        ->badge()
+                        ->state(fn (GroceryReceiptItem $record): string => ArticlePrices::formatRaise($summary($record)['raise_since_cheapest_percent']))
+                        ->color(function (GroceryReceiptItem $record) use ($summary): string {
+                            $percent = $summary($record)['raise_since_cheapest_percent'];
+
+                            return $percent !== null && $percent > 0 ? 'danger' : 'gray';
+                        }),
                     TextEntry::make('min_unit_price_cents')
                         ->label('Min')
                         ->state(fn (GroceryReceiptItem $record): int => $summary($record)['min_unit_price_cents'])

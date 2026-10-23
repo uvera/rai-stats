@@ -165,6 +165,8 @@ class GroceriesSectionTest extends TestCase
             ->assertSee('Milk')
             ->assertSee('150.00')
             ->assertSee('100.00')
+            ->assertSee('+50.0%')
+            ->assertSee('Since cheapest')
             ->assertSee('Maxi 40')
             ->assertSee('Unit price over time');
 

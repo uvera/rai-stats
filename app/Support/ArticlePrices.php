@@ -48,6 +48,7 @@ class ArticlePrices
      *     max_unit_price_cents: int,
      *     avg_unit_price_cents: int,
      *     last_unit_price_cents: int,
+     *     raise_since_cheapest_percent: float|null,
      *     last_purchased_at: CarbonImmutable,
      *     providers: array<int, string>,
      * }>
@@ -70,6 +71,7 @@ class ArticlePrices
      *     max_unit_price_cents: int,
      *     avg_unit_price_cents: int,
      *     last_unit_price_cents: int,
+     *     raise_since_cheapest_percent: float|null,
      *     last_purchased_at: CarbonImmutable,
      *     providers: array<int, string>,
      * }|null
@@ -86,6 +88,28 @@ class ArticlePrices
     public static function money(int $cents): string
     {
         return number_format($cents / 100, 2).' RSD';
+    }
+
+    /**
+     * How far the latest unit price sits above the cheapest one, in percent.
+     * Null when the cheapest price is zero and the ratio is undefined.
+     */
+    public static function raiseSinceCheapest(int $cheapestCents, int $lastCents): ?float
+    {
+        if ($cheapestCents <= 0) {
+            return null;
+        }
+
+        return round(($lastCents - $cheapestCents) / $cheapestCents * 100, 1);
+    }
+
+    public static function formatRaise(?float $percent): string
+    {
+        if ($percent === null) {
+            return '—';
+        }
+
+        return ($percent > 0 ? '+' : '').number_format($percent, 1).'%';
     }
 
     /**
@@ -114,20 +138,25 @@ class ArticlePrices
      *     max_unit_price_cents: int,
      *     avg_unit_price_cents: int,
      *     last_unit_price_cents: int,
+     *     raise_since_cheapest_percent: float|null,
      *     last_purchased_at: CarbonImmutable,
      *     providers: array<int, string>,
      * }
      */
     private static function mapSummary(GroceryReceiptItem $row): array
     {
+        $min = (int) $row->min_unit_price_cents;
+        $last = (int) $row->last_unit_price_cents;
+
         return [
             'id' => (int) $row->id,
             'name' => $row->name,
             'times_bought' => (int) $row->times_bought,
-            'min_unit_price_cents' => (int) $row->min_unit_price_cents,
+            'min_unit_price_cents' => $min,
             'max_unit_price_cents' => (int) $row->max_unit_price_cents,
             'avg_unit_price_cents' => (int) $row->avg_unit_price_cents,
-            'last_unit_price_cents' => (int) $row->last_unit_price_cents,
+            'last_unit_price_cents' => $last,
+            'raise_since_cheapest_percent' => self::raiseSinceCheapest($min, $last),
             'last_purchased_at' => CarbonImmutable::parse($row->last_purchased_at),
             'providers' => collect(explode(',', (string) $row->providers))
                 ->filter()
