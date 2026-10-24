@@ -9,11 +9,9 @@ use App\Jobs\RaiffeisenLoginJob;
 use App\Models\Account;
 use App\Models\SyncRun;
 use App\Models\User;
-use App\Support\DateRange;
-use App\Support\DateRangeMerger;
+use App\Support\ImportRangeQueue;
 use App\Support\RaiffeisenImportSession;
 use BackedEnum;
-use DateTimeImmutable;
 use Filament\Forms\Components\CheckboxList;
 use Filament\Forms\Components\DatePicker;
 use Filament\Forms\Components\Select;
@@ -269,27 +267,7 @@ class ImportTransactions extends Page
     private function handleAccountsReady(array $fetchedAccounts): void
     {
         foreach ($fetchedAccounts as $account) {
-            $existing = Account::where('number', $account['number'])->first();
-
-            Account::updateOrCreate(
-                ['number' => $account['number']],
-                [
-                    // Ownership is set once, on first import, and never
-                    // reassigned: a jointly-held account stays with whoever
-                    // imported it first. Acceptable for a single-family
-                    // deployment; the other family member's transactions
-                    // still attach with their own user_id.
-                    'user_id' => $existing?->user_id ?? auth()->id(),
-                    // Refreshed every import - the bank can rename an account
-                    // or reissue its product_core_id, and a stale
-                    // product_core_id makes the turnover fetch silently
-                    // return nothing.
-                    'description' => $account['description'],
-                    'currency_code' => $account['currency_code'],
-                    'currency_code_numeric' => $account['currency_code_numeric'],
-                    'product_core_id' => $account['product_core_id'],
-                ]
-            );
+            Account::syncFromBank($account, auth()->id());
         }
 
         $this->accounts = array_map(fn (array $a) => [
@@ -364,46 +342,14 @@ class ImportTransactions extends Page
     }
 
     /**
-     * Adds [from, to] for one account to the queue, clipped to whatever gap
-     * is left after the ranges already queued this session for that account
-     * (rows already in the database are left to the importer's
-     * (account_id, dedup_key) de-duplication).
-     *
-     * Pure by design: it takes every value as an argument and touches only
-     * $this->queuedRanges - never the form-bound selectedAccountNumber /
-     * fromDate / toDate, so the guided and "all accounts" loops can't leave
-     * the visible form pointing at the last item they iterated.
-     *
      * @return 'added'|'trimmed'|'duplicate'
      */
     private function queueRange(string $accountNumber, string $from, string $to): string
     {
-        $requested = new DateRange(new DateTimeImmutable($from), new DateTimeImmutable($to));
+        $added = ImportRangeQueue::add($this->queuedRanges, $accountNumber, $from, $to);
+        $this->queuedRanges = $added['ranges'];
 
-        $queuedForAccount = collect($this->queuedRanges)
-            ->where('account_number', $accountNumber)
-            ->map(fn ($r) => new DateRange(new DateTimeImmutable($r['from']), new DateTimeImmutable($r['to'])))
-            ->all();
-
-        $gaps = DateRangeMerger::subtract($requested, $queuedForAccount);
-
-        if ($gaps === []) {
-            return 'duplicate';
-        }
-
-        foreach ($gaps as $gap) {
-            $this->queuedRanges[] = [
-                'account_number' => $accountNumber,
-                'from' => $gap->from->format('Y-m-d'),
-                'to' => $gap->to->format('Y-m-d'),
-            ];
-        }
-
-        $adjusted = count($gaps) !== 1
-            || $gaps[0]->from != $requested->from
-            || $gaps[0]->to != $requested->to;
-
-        return $adjusted ? 'trimmed' : 'added';
+        return $added['status'];
     }
 
     public function removeRange(int $index): void
