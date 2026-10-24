@@ -371,4 +371,110 @@ class TransactionStatsTest extends TestCase
         $this->assertSame('Streaming Co', $rows[0]->place);
         $this->assertSame(3, (int) $rows[0]->months);
     }
+
+    public function test_period_comparison_reports_income_expenses_and_net_per_currency(): void
+    {
+        $user = User::factory()->create();
+        $account = Account::factory()->for($user)->create();
+
+        Transaction::factory()->for($account)->for($user)->create(['amount_cents' => 10000, 'date' => '2026-01-10']);
+        Transaction::factory()->for($account)->for($user)->create(['amount_cents' => -4000, 'date' => '2026-01-11']);
+        Transaction::factory()->for($account)->for($user)->create(['amount_cents' => 5000, 'date' => '2025-12-10']);
+        Transaction::factory()->for($account)->for($user)->create(['amount_cents' => -2000, 'date' => '2025-12-11']);
+        Transaction::factory()->for($account)->for($user)->create(['amount_cents' => 8000, 'date' => '2025-01-10']);
+        Transaction::factory()->for($account)->for($user)->create(['amount_cents' => -1000, 'date' => '2025-01-11']);
+
+        $comparison = (new TransactionStats(
+            userId: $user->id,
+            from: CarbonImmutable::parse('2026-01-01'),
+            to: CarbonImmutable::parse('2026-01-31'),
+        ))->periodComparison();
+
+        $this->assertSame(10000, $comparison['current']['RSD']['income_cents']);
+        $this->assertSame(4000, $comparison['current']['RSD']['expense_cents']);
+        $this->assertSame(6000, $comparison['current']['RSD']['net_cents']);
+        $this->assertSame(5000, $comparison['previous']['RSD']['income_cents']);
+        $this->assertSame(2000, $comparison['previous']['RSD']['expense_cents']);
+        $this->assertSame(7000, $comparison['last_year']['RSD']['net_cents']);
+    }
+
+    public function test_card_spend_by_weekday_counts_pos_charges_only(): void
+    {
+        $user = User::factory()->create();
+        $account = Account::factory()->for($user)->create();
+
+        Transaction::factory()->for($account)->for($user)->create([
+            'type' => TransactionType::Pos, 'amount_cents' => -1500, 'date' => '2026-06-01 12:00:00',
+        ]);
+        Transaction::factory()->for($account)->for($user)->create([
+            'type' => TransactionType::Income, 'amount_cents' => 9999, 'date' => '2026-06-01 13:00:00',
+        ]);
+        Transaction::factory()->for($account)->for($user)->create([
+            'type' => TransactionType::Other, 'amount_cents' => -8000, 'date' => '2026-06-07 12:00:00',
+        ]);
+        Transaction::factory()->for($account)->for($user)->create([
+            'type' => TransactionType::Pos, 'amount_cents' => -500, 'date' => '2026-06-07 18:00:00',
+        ]);
+        Transaction::factory()->for($account)->for($user)->reserved()->create([
+            'amount_cents' => -4000, 'date' => '2026-06-01 09:00:00',
+        ]);
+
+        $days = collect((new TransactionStats(
+            userId: $user->id,
+            from: CarbonImmutable::parse('2026-06-01'),
+            to: CarbonImmutable::parse('2026-06-07'),
+        ))->cardSpendByWeekday());
+
+        $this->assertSame(['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'], $days->pluck('weekday')->all());
+        $this->assertSame(1500, $days[0]['spend_cents']['RSD']);
+        $this->assertSame(1, $days[0]['transaction_count']);
+        $this->assertSame(500, $days[6]['spend_cents']['RSD']);
+        $this->assertSame(0, $days[2]['transaction_count']);
+    }
+
+    public function test_savings_rate_is_net_over_income_and_skips_a_period_with_no_income(): void
+    {
+        $user = User::factory()->create();
+        $account = Account::factory()->for($user)->create();
+
+        Transaction::factory()->for($account)->for($user)->create(['amount_cents' => 10000, 'date' => '2026-01-10']);
+        Transaction::factory()->for($account)->for($user)->create(['amount_cents' => -4000, 'date' => '2026-01-11']);
+        Transaction::factory()->for($account)->for($user)->create(['amount_cents' => -1000, 'date' => '2026-02-11']);
+
+        $stats = new TransactionStats(
+            userId: $user->id,
+            from: CarbonImmutable::parse('2026-01-01'),
+            to: CarbonImmutable::parse('2026-02-28'),
+        );
+
+        $this->assertSame(['RSD' => 50], $stats->savingsRateByCurrency());
+
+        $trend = $stats->savingsRateTrend();
+
+        $this->assertCount(2, $trend['periods']);
+        $this->assertSame(60, $trend['rates']['RSD'][0]);
+        $this->assertNull($trend['rates']['RSD'][1]);
+    }
+
+    public function test_bills_versus_rest_splits_recurring_places_from_other_expenses(): void
+    {
+        $user = User::factory()->create();
+        $account = Account::factory()->for($user)->create();
+
+        foreach (['2026-01-05', '2026-02-05', '2026-03-05'] as $date) {
+            Transaction::factory()->for($account)->for($user)->create([
+                'place' => 'Streaming Co', 'amount_cents' => -1000, 'date' => $date,
+            ]);
+        }
+
+        Transaction::factory()->for($account)->for($user)->create([
+            'place' => 'Cafe', 'amount_cents' => -1000, 'date' => '2026-01-10',
+        ]);
+
+        $split = $this->stats($user->id)->billsVersusRest();
+
+        $this->assertSame(3000, $split['RSD']['bills_cents']);
+        $this->assertSame(1000, $split['RSD']['discretionary_cents']);
+        $this->assertSame(75, $split['RSD']['bills_share']);
+    }
 }

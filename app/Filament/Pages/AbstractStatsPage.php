@@ -2,15 +2,18 @@
 
 namespace App\Filament\Pages;
 
+use App\Filament\Widgets\BillsVersusRestChart;
 use App\Filament\Widgets\IncomeExpenseChart;
 use App\Filament\Widgets\LargestTransactionsTable;
 use App\Filament\Widgets\LeaderboardTable;
 use App\Filament\Widgets\RecurringChargesTable;
+use App\Filament\Widgets\SavingsRateChart;
 use App\Filament\Widgets\SpendByCategoryChart;
 use App\Filament\Widgets\SpendPerAccountTable;
 use App\Filament\Widgets\SpendPerPlaceOverTimeChart;
 use App\Filament\Widgets\StatsOverview;
 use App\Filament\Widgets\TopPlacesChart;
+use App\Filament\Widgets\WeekdayCardSpendChart;
 use App\Models\Account;
 use Filament\Forms\Components\DatePicker;
 use Filament\Forms\Components\Select;
@@ -158,6 +161,9 @@ abstract class AbstractStatsPage extends Page
             SpendByCategoryChart::class,
             IncomeExpenseChart::class,
             SpendPerPlaceOverTimeChart::class,
+            WeekdayCardSpendChart::class,
+            SavingsRateChart::class,
+            BillsVersusRestChart::class,
         ];
     }
 

@@ -16,4 +16,10 @@
         :data="$this->widgetData()"
         :columns="['default' => 1, 'lg' => 2]"
     />
+
+    <x-filament-widgets::widgets
+        :widgets="$this->getTableWidgets()"
+        :data="$this->widgetData()"
+        :columns="1"
+    />
 </x-filament-panels::page>

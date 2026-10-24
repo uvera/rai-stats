@@ -3,7 +3,10 @@
 namespace App\Filament\Widgets\Groceries;
 
 use App\Filament\Widgets\Groceries\Concerns\ReadsGroceryFilters;
+use App\Support\HoverHint;
+use App\Support\StatHints;
 use Filament\Widgets\ChartWidget;
+use Illuminate\Contracts\Support\Htmlable;
 
 class BasketSizeOverTimeChart extends ChartWidget
 {
@@ -11,7 +14,10 @@ class BasketSizeOverTimeChart extends ChartWidget
 
     protected static bool $isLazy = false;
 
-    protected ?string $heading = 'Basket size over time';
+    public function getHeading(): string|Htmlable|null
+    {
+        return HoverHint::text('Basket size over time', StatHints::BASKET_OVER_TIME);
+    }
 
     protected function getType(): string
     {

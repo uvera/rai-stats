@@ -6,7 +6,10 @@ use App\Enums\ReceiptProvider;
 use App\Filament\Widgets\Groceries\BasketSizeOverTimeChart;
 use App\Filament\Widgets\Groceries\GroceryStatsOverview;
 use App\Filament\Widgets\Groceries\ProductCategorySpendChart;
+use App\Filament\Widgets\Groceries\SpendByStoreTable;
+use App\Filament\Widgets\Groceries\StaplesTable;
 use App\Filament\Widgets\Groceries\TopProductsChart;
+use App\Filament\Widgets\Groceries\WeekdaySpendChart;
 use App\Models\GroceryAccount;
 use BackedEnum;
 use Filament\Forms\Components\DatePicker;
@@ -96,6 +99,18 @@ class GroceryStats extends Page
             ProductCategorySpendChart::class,
             TopProductsChart::class,
             BasketSizeOverTimeChart::class,
+            WeekdaySpendChart::class,
+        ];
+    }
+
+    /**
+     * @return array<int, class-string>
+     */
+    public function getTableWidgets(): array
+    {
+        return [
+            SpendByStoreTable::class,
+            StaplesTable::class,
         ];
     }
 }

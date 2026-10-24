@@ -3,7 +3,10 @@
 namespace App\Filament\Widgets;
 
 use App\Filament\Widgets\Concerns\ReadsStatsFilters;
+use App\Support\HoverHint;
+use App\Support\StatHints;
 use Filament\Widgets\ChartWidget;
+use Illuminate\Contracts\Support\Htmlable;
 
 class TopPlacesChart extends ChartWidget
 {
@@ -11,7 +14,10 @@ class TopPlacesChart extends ChartWidget
 
     protected static bool $isLazy = false;
 
-    protected ?string $heading = 'Top places';
+    public function getHeading(): string|Htmlable|null
+    {
+        return HoverHint::text('Top places', StatHints::TOP_PLACES);
+    }
 
     protected function getType(): string
     {

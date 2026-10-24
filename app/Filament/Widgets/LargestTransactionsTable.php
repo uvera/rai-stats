@@ -3,6 +3,8 @@
 namespace App\Filament\Widgets;
 
 use App\Filament\Widgets\Concerns\ReadsStatsFilters;
+use App\Support\HoverHint;
+use App\Support\StatHints;
 use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Table;
 use Filament\Widgets\TableWidget;
@@ -21,7 +23,7 @@ class LargestTransactionsTable extends TableWidget
         return $table
             ->stackedOnMobile()
             ->query(fn () => $this->stats()->largestTransactionsQuery())
-            ->heading('Largest transactions')
+            ->heading(HoverHint::text('Largest transactions', StatHints::LARGEST))
             ->paginated([10, 25, 50])
             ->columns([
                 TextColumn::make('date')->dateTime('d.m.Y')->sortable()->visibleFrom('sm'),

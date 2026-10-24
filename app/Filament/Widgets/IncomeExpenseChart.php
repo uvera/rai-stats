@@ -3,7 +3,10 @@
 namespace App\Filament\Widgets;
 
 use App\Filament\Widgets\Concerns\ReadsStatsFilters;
+use App\Support\HoverHint;
+use App\Support\StatHints;
 use Filament\Widgets\ChartWidget;
+use Illuminate\Contracts\Support\Htmlable;
 
 class IncomeExpenseChart extends ChartWidget
 {
@@ -11,7 +14,10 @@ class IncomeExpenseChart extends ChartWidget
 
     protected static bool $isLazy = false;
 
-    protected ?string $heading = 'Income vs expense';
+    public function getHeading(): string|Htmlable|null
+    {
+        return HoverHint::text('Income vs expense', StatHints::INCOME_EXPENSE);
+    }
 
     protected function getType(): string
     {

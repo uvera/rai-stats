@@ -3,7 +3,10 @@
 namespace App\Filament\Widgets;
 
 use App\Filament\Widgets\Concerns\ReadsStatsFilters;
+use App\Support\HoverHint;
+use App\Support\StatHints;
 use Filament\Widgets\ChartWidget;
+use Illuminate\Contracts\Support\Htmlable;
 
 class SpendPerPlaceOverTimeChart extends ChartWidget
 {
@@ -11,7 +14,10 @@ class SpendPerPlaceOverTimeChart extends ChartWidget
 
     protected static bool $isLazy = false;
 
-    protected ?string $heading = 'Spend per place over time';
+    public function getHeading(): string|Htmlable|null
+    {
+        return HoverHint::text('Spend per place over time', StatHints::SPEND_OVER_TIME);
+    }
 
     private const COLORS = ['#6366f1', '#f59e0b', '#22c55e', '#ef4444', '#06b6d4'];
 

@@ -3,7 +3,10 @@
 namespace App\Filament\Widgets;
 
 use App\Filament\Widgets\Concerns\ReadsStatsFilters;
+use App\Support\HoverHint;
+use App\Support\StatHints;
 use Filament\Widgets\ChartWidget;
+use Illuminate\Contracts\Support\Htmlable;
 
 class SpendByCategoryChart extends ChartWidget
 {
@@ -11,7 +14,10 @@ class SpendByCategoryChart extends ChartWidget
 
     protected static bool $isLazy = false;
 
-    protected ?string $heading = 'Spend by category';
+    public function getHeading(): string|Htmlable|null
+    {
+        return HoverHint::text('Spend by category', StatHints::CATEGORY);
+    }
 
     protected function getType(): string
     {

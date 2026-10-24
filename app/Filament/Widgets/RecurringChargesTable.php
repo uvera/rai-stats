@@ -3,6 +3,8 @@
 namespace App\Filament\Widgets;
 
 use App\Filament\Widgets\Concerns\ReadsStatsFilters;
+use App\Support\HoverHint;
+use App\Support\StatHints;
 use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Table;
 use Filament\Widgets\TableWidget;
@@ -20,8 +22,7 @@ class RecurringChargesTable extends TableWidget
         return $table
             ->stackedOnMobile()
             ->query(fn () => $this->stats()->recurringChargesQuery())
-            ->heading('Recurring charges')
-            ->description('Same place, similar amount, 3+ months - a rough heuristic, not exact.')
+            ->heading(HoverHint::text('Recurring charges', StatHints::RECURRING))
             ->paginated(false)
             // The query groups by place with only a synthetic MIN(id) as the
             // row key, so Filament's usual "always tiebreak by the real,

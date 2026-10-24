@@ -3,7 +3,10 @@
 namespace App\Filament\Widgets\Groceries;
 
 use App\Filament\Widgets\Groceries\Concerns\ReadsGroceryFilters;
+use App\Support\HoverHint;
+use App\Support\StatHints;
 use Filament\Widgets\ChartWidget;
+use Illuminate\Contracts\Support\Htmlable;
 
 class TopProductsChart extends ChartWidget
 {
@@ -11,7 +14,10 @@ class TopProductsChart extends ChartWidget
 
     protected static bool $isLazy = false;
 
-    protected ?string $heading = 'Top products by spend';
+    public function getHeading(): string|Htmlable|null
+    {
+        return HoverHint::text('Top products by spend', StatHints::TOP_PRODUCTS);
+    }
 
     protected function getType(): string
     {

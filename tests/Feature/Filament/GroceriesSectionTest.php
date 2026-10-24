@@ -18,6 +18,7 @@ use App\Filament\Widgets\Groceries\ArticlePurchasesTable;
 use App\Filament\Widgets\Groceries\BasketSizeOverTimeChart;
 use App\Filament\Widgets\Groceries\GroceryStatsOverview;
 use App\Filament\Widgets\Groceries\ProductCategorySpendChart;
+use App\Filament\Widgets\Groceries\StaplesTable;
 use App\Filament\Widgets\Groceries\TopProductsChart;
 use App\Models\GroceryAccount;
 use App\Models\GroceryReceipt;
@@ -68,6 +69,39 @@ class GroceriesSectionTest extends TestCase
         ] as $widget) {
             Livewire::test($widget, $filters)->assertOk();
         }
+    }
+
+    public function test_grocery_period_change_explains_its_windows_on_hover(): void
+    {
+        $this->actingAs(User::factory()->create());
+
+        GroceryReceipt::factory()->create(['purchased_at' => '2026-01-15', 'total_cents' => 20000]);
+        GroceryReceipt::factory()->create(['purchased_at' => '2025-12-15', 'total_cents' => 10000]);
+
+        Livewire::test(GroceryStatsOverview::class, ['pageFilters' => [
+            'from' => '2026-01-01',
+            'to' => '2026-01-31',
+        ]])
+            ->assertOk()
+            ->assertSee('+100% vs previous')
+            ->assertSee('Previous is 01.12.2025 to 31.12.2025', false)
+            ->assertSee('Last year is 01.01.2025 to 31.01.2025', false)
+            ->assertSee('already including VAT', false)
+            ->assertSee('matched a bank payment', false);
+
+        Livewire::test(TopProductsChart::class, ['pageFilters' => [
+            'from' => '2026-01-01',
+            'to' => '2026-01-31',
+        ]])
+            ->assertOk()
+            ->assertSee('different spelling counts as a different product', false);
+
+        Livewire::test(StaplesTable::class, ['pageFilters' => [
+            'from' => '2026-01-01',
+            'to' => '2026-01-31',
+        ]])
+            ->assertOk()
+            ->assertSee('more than half the months', false);
     }
 
     public function test_non_admin_cannot_create_a_maxi_account(): void

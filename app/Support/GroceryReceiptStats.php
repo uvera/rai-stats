@@ -179,4 +179,215 @@ readonly class GroceryReceiptStats
 
         return (int) round($linked / $total * 100);
     }
+
+    /**
+     * Totals for this range, the equal-length window before it, and the
+     * same dates one year earlier. Account and provider filters carry over.
+     *
+     * @return array{
+     *     current: array{receipt_count: int, total_spent_cents: int, average_basket_cents: int},
+     *     previous: array{receipt_count: int, total_spent_cents: int, average_basket_cents: int},
+     *     last_year: array{receipt_count: int, total_spent_cents: int, average_basket_cents: int},
+     * }
+     */
+    public function periodComparison(): array
+    {
+        [$previousFrom, $previousTo] = PeriodChange::previousWindow($this->from, $this->to);
+
+        return [
+            'current' => $this->basketTotals(),
+            'previous' => $this->forRange($previousFrom, $previousTo)->basketTotals(),
+            'last_year' => $this->forRange($this->from->subYear(), $this->to->subYear())->basketTotals(),
+        ];
+    }
+
+    public function comparisonHint(): string
+    {
+        return PeriodChange::hint($this->from, $this->to);
+    }
+
+    /**
+     * Monday-first trip spend. Every weekday is present, with zeros where
+     * nothing was bought, and spend split by receipt currency.
+     *
+     * @return array<int, array{weekday: string, receipts: int, spend_cents: array<string, int>}>
+     */
+    public function spendByWeekday(): array
+    {
+        $rows = $this->receipts()
+            ->groupByRaw('EXTRACT(ISODOW FROM purchased_at)::int')
+            ->groupBy('currency_code')
+            ->selectRaw('EXTRACT(ISODOW FROM purchased_at)::int as weekday')
+            ->selectRaw('currency_code')
+            ->selectRaw('COUNT(*) as receipts')
+            ->selectRaw('COALESCE(SUM(total_cents), 0) as spend_cents')
+            ->get();
+
+        return array_map(fn (array $day) => [
+            'weekday' => $day['weekday'],
+            'receipts' => $day['count'],
+            'spend_cents' => $day['spend_cents'],
+        ], Weekdays::fill($rows, 'receipts'));
+    }
+
+    /**
+     * One row per store name and format. Format stays in the group because
+     * the same banner can be a hypermarket and a convenience shop.
+     *
+     * @return Builder<GroceryReceipt>
+     */
+    public function spendByStoreQuery(): Builder
+    {
+        return $this->receipts()
+            ->groupByRaw("COALESCE(store_name, 'Unknown store'), store_format")
+            ->selectRaw('MIN(id) as id')
+            ->selectRaw("COALESCE(store_name, 'Unknown store') as store_name")
+            ->selectRaw('store_format')
+            ->selectRaw('COUNT(*) as receipts')
+            ->selectRaw('COALESCE(SUM(total_cents), 0) as spend_cents')
+            ->selectRaw('COALESCE(ROUND(AVG(total_cents)), 0) as avg_basket_cents');
+    }
+
+    /**
+     * @return array<int, array{store_name: string, store_format: string|null, receipts: int, spend_cents: int, avg_basket_cents: int}>
+     */
+    public function spendByStore(): array
+    {
+        return $this->spendByStoreQuery()
+            ->orderByDesc('spend_cents')
+            ->get()
+            ->map(fn ($row) => [
+                'store_name' => $row->store_name,
+                'store_format' => $row->store_format,
+                'receipts' => (int) $row->receipts,
+                'spend_cents' => (int) $row->spend_cents,
+                'avg_basket_cents' => (int) $row->avg_basket_cents,
+            ])
+            ->all();
+    }
+
+    /**
+     * Products bought in more than half the months the range covers.
+     * A range shorter than two months cannot separate a staple from a
+     * one-off, so the query matches nothing.
+     *
+     * @return Builder<GroceryReceiptItem>
+     */
+    public function staplesQuery(): Builder
+    {
+        $query = $this->items()
+            ->join('grocery_receipts', 'grocery_receipts.id', '=', 'grocery_receipt_items.grocery_receipt_id')
+            ->groupBy('grocery_receipt_items.name')
+            ->selectRaw('MIN(grocery_receipt_items.id) as id')
+            ->selectRaw('grocery_receipt_items.name as name')
+            ->selectRaw('COALESCE(SUM(grocery_receipt_items.total_cents), 0) as spend_cents')
+            ->selectRaw('COALESCE(SUM(grocery_receipt_items.quantity), 0) as quantity')
+            ->selectRaw("COUNT(DISTINCT date_trunc('month', grocery_receipts.purchased_at)) as months");
+
+        $months = $this->monthsSpanned();
+
+        if ($months < 2) {
+            return $query->whereRaw('1 = 0');
+        }
+
+        return $query->havingRaw(
+            "COUNT(DISTINCT date_trunc('month', grocery_receipts.purchased_at)) >= ?",
+            [intdiv($months, 2) + 1],
+        );
+    }
+
+    /**
+     * @return array<int, array{name: string, months: int, quantity: float, spend_cents: int}>
+     */
+    public function staples(): array
+    {
+        return $this->staplesQuery()
+            ->orderByDesc('months')
+            ->orderByDesc('spend_cents')
+            ->get()
+            ->map(fn ($row) => [
+                'name' => $row->name,
+                'months' => (int) $row->months,
+                'quantity' => (float) $row->quantity,
+                'spend_cents' => (int) $row->spend_cents,
+            ])
+            ->all();
+    }
+
+    /**
+     * Linked receipt totals divided by household bank expenses on the same
+     * dates. Grocery account and provider filters apply to the receipts
+     * only — the denominator stays every expense in the range, per currency,
+     * so a Maxi-only filter does not shrink the card-spend baseline.
+     * Currencies with no bank expenses are omitted.
+     *
+     * @return array<string, array{linked_cents: int, expense_cents: int, share: int}>
+     */
+    public function cardSpendShare(): array
+    {
+        $linked = $this->receipts()
+            ->whereNotNull('transaction_id')
+            ->groupBy('currency_code')
+            ->selectRaw('currency_code, COALESCE(SUM(total_cents), 0) as linked_cents')
+            ->pluck('linked_cents', 'currency_code');
+
+        $expenses = (new TransactionStats(
+            userId: null,
+            from: $this->from,
+            to: $this->to,
+        ))->totalExpenseByCurrency();
+
+        $shares = [];
+
+        foreach (collect($linked->keys())->merge(array_keys($expenses))->unique()->sort() as $currency) {
+            $expenseCents = $expenses[$currency] ?? 0;
+
+            if ($expenseCents === 0) {
+                continue;
+            }
+
+            $linkedCents = (int) ($linked[$currency] ?? 0);
+
+            $shares[$currency] = [
+                'linked_cents' => $linkedCents,
+                'expense_cents' => $expenseCents,
+                'share' => (int) round($linkedCents / $expenseCents * 100),
+            ];
+        }
+
+        return $shares;
+    }
+
+    /**
+     * @return array{receipt_count: int, total_spent_cents: int, average_basket_cents: int}
+     */
+    private function basketTotals(): array
+    {
+        $totals = $this->receipts()
+            ->selectRaw('COUNT(*) as receipt_count')
+            ->selectRaw('COALESCE(SUM(total_cents), 0) as total_spent_cents')
+            ->first();
+
+        $count = (int) $totals->receipt_count;
+        $spent = (int) $totals->total_spent_cents;
+
+        return [
+            'receipt_count' => $count,
+            'total_spent_cents' => $spent,
+            'average_basket_cents' => $count === 0 ? 0 : (int) round($spent / $count),
+        ];
+    }
+
+    private function forRange(CarbonImmutable $from, CarbonImmutable $to): self
+    {
+        return new self($from, $to, $this->groceryAccountId, $this->provider);
+    }
+
+    private function monthsSpanned(): int
+    {
+        $start = $this->from->startOfMonth();
+        $end = $this->to->startOfMonth();
+
+        return ($end->year - $start->year) * 12 + ($end->month - $start->month) + 1;
+    }
 }

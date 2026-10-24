@@ -514,4 +514,197 @@ readonly class TransactionStats
             ."place ILIKE '%bankomat%' OR place ILIKE '%atm%' "
             ."OR description ILIKE '%atm%' OR description ILIKE '%withdrawal%')";
     }
+
+    /**
+     * Income, expenses, and net for this range, the equal-length window
+     * before it, and the same dates one year earlier. Per currency, because
+     * a dinar and a euro are not the same cent.
+     *
+     * @return array{
+     *     current: array<string, array{income_cents: int, expense_cents: int, net_cents: int}>,
+     *     previous: array<string, array{income_cents: int, expense_cents: int, net_cents: int}>,
+     *     last_year: array<string, array{income_cents: int, expense_cents: int, net_cents: int}>,
+     * }
+     */
+    public function periodComparison(): array
+    {
+        [$previousFrom, $previousTo] = PeriodChange::previousWindow($this->from, $this->to);
+
+        return [
+            'current' => $this->flowByCurrency(),
+            'previous' => $this->forRange($previousFrom, $previousTo)->flowByCurrency(),
+            'last_year' => $this->forRange($this->from->subYear(), $this->to->subYear())->flowByCurrency(),
+        ];
+    }
+
+    public function comparisonHint(): string
+    {
+        return PeriodChange::hint($this->from, $this->to);
+    }
+
+    /**
+     * POS charges only — the card-swipe habit, without transfers, cash, or income.
+     * Monday-first, with a zero for every weekday that had no swipe.
+     *
+     * @return array<int, array{weekday: string, transaction_count: int, spend_cents: array<string, int>}>
+     */
+    public function cardSpendByWeekday(): array
+    {
+        $rows = $this->baseQuery()
+            ->where('transactions.amount_cents', '<', 0)
+            ->where('transactions.type', TransactionType::Pos)
+            ->groupByRaw('EXTRACT(ISODOW FROM transactions.date)::int')
+            ->groupBy('transactions.currency_code')
+            ->selectRaw('EXTRACT(ISODOW FROM transactions.date)::int as weekday')
+            ->selectRaw('transactions.currency_code as currency_code')
+            ->selectRaw('COUNT(*) as transaction_count')
+            ->selectRaw('COALESCE(SUM(-transactions.amount_cents), 0) as spend_cents')
+            ->get();
+
+        return array_map(fn (array $day) => [
+            'weekday' => $day['weekday'],
+            'transaction_count' => $day['count'],
+            'spend_cents' => $day['spend_cents'],
+        ], Weekdays::fill($rows, 'transaction_count'));
+    }
+
+    /**
+     * Net divided by income, per period and per currency. A period with no
+     * income is null — there is no rate to show, rather than a divide-by-zero.
+     *
+     * @return array{periods: array<int, string>, rates: array<string, array<int, int|null>>}
+     */
+    public function savingsRateTrend(): array
+    {
+        $rows = $this->baseQuery()
+            ->groupBy('transactions.currency_code')
+            ->groupByRaw($this->periodTruncSql())
+            ->selectRaw('transactions.currency_code as currency_code')
+            ->selectRaw("{$this->periodTruncSql()} as period")
+            ->selectRaw('COALESCE(SUM(CASE WHEN amount_cents > 0 THEN amount_cents ELSE 0 END), 0) as income_cents')
+            ->selectRaw('COALESCE(SUM(amount_cents), 0) as net_cents')
+            ->orderBy('period')
+            ->get();
+
+        $periods = $rows->pluck('period')->map(fn ($period) => (string) $period)->unique()->sort()->values()->all();
+        $indexed = [];
+
+        foreach ($rows as $row) {
+            $indexed[$row->currency_code][(string) $row->period] = $row;
+        }
+
+        $rates = [];
+
+        foreach (collect(array_keys($indexed))->sort()->all() as $currency) {
+            $rates[$currency] = array_map(function (string $period) use ($indexed, $currency) {
+                $row = $indexed[$currency][$period] ?? null;
+
+                if ($row === null || (int) $row->income_cents === 0) {
+                    return null;
+                }
+
+                return (int) round((int) $row->net_cents / (int) $row->income_cents * 100);
+            }, $periods);
+        }
+
+        return ['periods' => $periods, 'rates' => $rates];
+    }
+
+    /**
+     * Savings rate for the whole selected range. Currencies with no income
+     * are left out.
+     *
+     * @return array<string, int> currency_code => percent
+     */
+    public function savingsRateByCurrency(): array
+    {
+        $rates = [];
+
+        foreach ($this->flowByCurrency() as $currency => $flow) {
+            if ($flow['income_cents'] === 0) {
+                continue;
+            }
+
+            $rates[$currency] = (int) round($flow['net_cents'] / $flow['income_cents'] * 100);
+        }
+
+        return $rates;
+    }
+
+    /**
+     * Spend at places that pass the recurring-charge heuristic, against the
+     * rest of expenses. The recurring list is the same one the table uses.
+     *
+     * @return array<string, array{bills_cents: int, discretionary_cents: int, bills_share: int}>
+     */
+    public function billsVersusRest(): array
+    {
+        $places = array_column($this->recurringCharges(), 'place');
+        $expenses = $this->totalExpenseByCurrency();
+
+        $bills = [];
+
+        if ($places !== []) {
+            $bills = $this->baseQuery()
+                ->where('transactions.amount_cents', '<', 0)
+                ->whereIn('transactions.place', $places)
+                ->groupBy('transactions.currency_code')
+                ->selectRaw('transactions.currency_code as currency_code, COALESCE(SUM(-transactions.amount_cents), 0) as bills_cents')
+                ->pluck('bills_cents', 'currency_code')
+                ->map(fn ($cents) => (int) $cents)
+                ->all();
+        }
+
+        $split = [];
+
+        foreach ($expenses as $currency => $expenseCents) {
+            if ($expenseCents === 0) {
+                continue;
+            }
+
+            $billsCents = $bills[$currency] ?? 0;
+
+            $split[$currency] = [
+                'bills_cents' => $billsCents,
+                'discretionary_cents' => $expenseCents - $billsCents,
+                'bills_share' => (int) round($billsCents / $expenseCents * 100),
+            ];
+        }
+
+        return $split;
+    }
+
+    /**
+     * @return array<string, array{income_cents: int, expense_cents: int, net_cents: int}>
+     */
+    private function flowByCurrency(): array
+    {
+        return $this->baseQuery()
+            ->groupBy('transactions.currency_code')
+            ->orderBy('transactions.currency_code')
+            ->selectRaw('transactions.currency_code as currency_code')
+            ->selectRaw('COALESCE(SUM(CASE WHEN amount_cents > 0 THEN amount_cents ELSE 0 END), 0) as income_cents')
+            ->selectRaw('COALESCE(SUM(CASE WHEN amount_cents < 0 THEN -amount_cents ELSE 0 END), 0) as expense_cents')
+            ->selectRaw('COALESCE(SUM(amount_cents), 0) as net_cents')
+            ->get()
+            ->mapWithKeys(fn ($row) => [
+                $row->currency_code => [
+                    'income_cents' => (int) $row->income_cents,
+                    'expense_cents' => (int) $row->expense_cents,
+                    'net_cents' => (int) $row->net_cents,
+                ],
+            ])
+            ->all();
+    }
+
+    private function forRange(CarbonImmutable $from, CarbonImmutable $to): self
+    {
+        return new self(
+            userId: $this->userId,
+            from: $from,
+            to: $to,
+            period: $this->period,
+            accountIds: $this->accountIds,
+        );
+    }
 }

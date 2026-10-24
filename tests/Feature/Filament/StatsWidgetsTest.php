@@ -2,6 +2,7 @@
 
 namespace Tests\Feature\Filament;
 
+use App\Filament\Widgets\BillsVersusRestChart;
 use App\Filament\Widgets\IncomeExpenseChart;
 use App\Filament\Widgets\LargestTransactionsTable;
 use App\Filament\Widgets\LeaderboardTable;
@@ -11,6 +12,7 @@ use App\Filament\Widgets\SpendPerAccountTable;
 use App\Filament\Widgets\SpendPerPlaceOverTimeChart;
 use App\Filament\Widgets\StatsOverview;
 use App\Filament\Widgets\TopPlacesChart;
+use App\Filament\Widgets\WeekdayCardSpendChart;
 use App\Models\Account;
 use App\Models\Category;
 use App\Models\Transaction;
@@ -188,5 +190,63 @@ class StatsWidgetsTest extends TestCase
             ->assertOk()
             ->assertSeeText('Me')
             ->assertSeeText('Sibling');
+    }
+
+    public function test_period_change_explains_its_windows_on_hover(): void
+    {
+        $user = User::factory()->create();
+        $account = Account::factory()->for($user)->create();
+
+        Transaction::factory()->for($account)->for($user)->create(['amount_cents' => 10000, 'date' => '2026-01-10']);
+        Transaction::factory()->for($account)->for($user)->create(['amount_cents' => 5000, 'date' => '2025-12-10']);
+
+        $this->actingAs($user);
+
+        Livewire::test(StatsOverview::class, [
+            'userId' => $user->id,
+            'pageFilters' => [
+                'from' => '2026-01-01',
+                'to' => '2026-01-31',
+                'period' => 'month',
+            ],
+        ])
+            ->assertOk()
+            ->assertSee('+100% vs previous')
+            ->assertSee('Previous is 01.12.2025 to 31.12.2025', false)
+            ->assertSee('Last year is 01.01.2025 to 31.01.2025', false)
+            ->assertSee('Pending holds are left out', false);
+
+        Livewire::test(WeekdayCardSpendChart::class, [
+            'userId' => $user->id,
+            'pageFilters' => [
+                'from' => '2026-01-01',
+                'to' => '2026-01-31',
+                'period' => 'month',
+            ],
+        ])
+            ->assertOk()
+            ->assertSee('Card payments only', false);
+
+        Livewire::test(BillsVersusRestChart::class, [
+            'userId' => $user->id,
+            'pageFilters' => [
+                'from' => '2026-01-01',
+                'to' => '2026-01-31',
+                'period' => 'month',
+            ],
+        ])
+            ->assertOk()
+            ->assertSee('within 15% of their average', false);
+
+        Livewire::test(LeaderboardTable::class, [
+            'userId' => $user->id,
+            'pageFilters' => [
+                'from' => '2026-01-01',
+                'to' => '2026-01-31',
+                'period' => 'month',
+            ],
+        ])
+            ->assertOk()
+            ->assertSee('across the whole household', false);
     }
 }
