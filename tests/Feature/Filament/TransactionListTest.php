@@ -53,4 +53,23 @@ class TransactionListTest extends TestCase
             ->filterTable('scope', 'all')
             ->assertCanSeeTableRecords([$mine, $theirs]);
     }
+
+    public function test_only_admins_may_categorize_a_transaction(): void
+    {
+        $member = User::factory()->create();
+        $memberAccount = Account::factory()->for($member)->create();
+        $memberTransaction = Transaction::factory()->for($memberAccount)->for($member)->create();
+
+        $admin = User::factory()->admin()->create();
+        $adminAccount = Account::factory()->for($admin)->create();
+        $transaction = Transaction::factory()->for($adminAccount)->for($admin)->create();
+
+        $this->actingAs($member);
+        Livewire::test(ListTransactions::class)
+            ->assertTableActionHidden('categorize', $memberTransaction);
+
+        $this->actingAs($admin);
+        Livewire::test(ListTransactions::class)
+            ->assertTableActionVisible('categorize', $transaction);
+    }
 }

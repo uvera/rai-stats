@@ -7,6 +7,7 @@ use App\Services\Receipts\Data\InvoiceSummary;
 use App\Services\Receipts\Data\ProviderToken;
 use App\Services\Receipts\ReceiptAuthException;
 use App\Services\Receipts\ReceiptException;
+use App\Support\JsonBody;
 use GuzzleHttp\Client;
 
 /**
@@ -69,7 +70,7 @@ class MaxiClient
         }
 
         if ($status !== 200) {
-            throw new ReceiptException("Unexpected login status {$status}: ".substr((string) $response->getBody(), 0, 300));
+            throw new ReceiptException("Unexpected login status {$status}.");
         }
 
         $token = $body['Data']['AccessToken'] ?? null;
@@ -161,6 +162,14 @@ class MaxiClient
      */
     public function downloadReceipt(string $pdfUrl, string $deviceUuid): string
     {
+        $parts = parse_url($pdfUrl);
+        $host = is_array($parts) ? strtolower((string) ($parts['host'] ?? '')) : '';
+        $scheme = is_array($parts) ? strtolower((string) ($parts['scheme'] ?? '')) : '';
+
+        if ($scheme !== 'https' || $host !== 'mobileloyalty-prod.delhaize.rs' || isset($parts['user']) || isset($parts['pass'])) {
+            throw new ReceiptException('Refusing to download an eReceipt from an unexpected host.');
+        }
+
         $response = $this->http->get($pdfUrl, [
             'headers' => ['User-Agent' => self::USER_AGENT] + $this->baseHeaders($deviceUuid),
         ]);
@@ -394,16 +403,7 @@ class MaxiClient
 
     private function decodeJson(string $body): array
     {
-        if (str_starts_with($body, "\xEF\xBB\xBF")) {
-            $body = substr($body, 3);
-        }
-
-        $decoded = json_decode($body, true);
-
-        if (! is_array($decoded)) {
-            throw new ReceiptException('Failed to decode Moj Maxi JSON response: '.json_last_error_msg());
-        }
-
-        return $decoded;
+        return JsonBody::decode($body)
+            ?? throw new ReceiptException('Failed to decode Moj Maxi JSON response: '.json_last_error_msg());
     }
 }

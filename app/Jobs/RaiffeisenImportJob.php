@@ -148,7 +148,7 @@ class RaiffeisenImportJob implements ShouldQueue
                 'reason' => $e->getMessage(),
             ]);
 
-            return $this->accountResult($accountNumber, $account->description, failed: true, message: SyncRun::clip($e->getMessage()));
+            return $this->accountResult($accountNumber, $account->description, inserted: $inserted, failed: true, message: SyncRun::clip($e->getMessage()));
         } catch (Throwable $e) {
             Log::error('raiffeisen.import.account_failed', [
                 'session' => $this->importSessionId,

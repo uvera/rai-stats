@@ -136,14 +136,15 @@ readonly class TransactionStats
     public function recurringChargesQuery(int $minMonths = 3): Builder
     {
         // No orderBy here - see the comment in spendPerAccountQuery().
-        return $this->baseQuery()
-            ->where('amount_cents', '<', 0)
-            ->groupBy('place')
-            ->selectRaw('MIN(id) as id, place')
-            ->selectRaw("COUNT(DISTINCT date_trunc('month', date)) as months")
-            ->selectRaw('AVG(-amount_cents) as average_cents')
-            ->having(DB::raw("COUNT(DISTINCT date_trunc('month', date))"), '>=', $minMonths)
-            ->havingRaw('COALESCE(STDDEV(-amount_cents), 0) <= AVG(-amount_cents) * 0.15');
+        return $this->havingRecurringStability(
+            $this->baseQuery()
+                ->where('amount_cents', '<', 0)
+                ->groupBy('place')
+                ->selectRaw('MIN(id) as id, place')
+                ->selectRaw("COUNT(DISTINCT date_trunc('month', date)) as months")
+                ->selectRaw('AVG(-amount_cents) as average_cents'),
+            $minMonths,
+        );
     }
 
     /**
@@ -303,10 +304,6 @@ readonly class TransactionStats
      */
     public function overview(): array
     {
-        $atmMatch = 'type = ? AND amount_cents < 0 AND ('
-            ."place ILIKE '%bankomat%' OR place ILIKE '%atm%' "
-            ."OR description ILIKE '%atm%' OR description ILIKE '%withdrawal%')";
-
         $rows = $this->baseQuery()
             ->groupBy('transactions.currency_code')
             ->orderBy('transactions.currency_code')
@@ -315,27 +312,33 @@ readonly class TransactionStats
             ->selectRaw('COALESCE(SUM(CASE WHEN amount_cents > 0 THEN amount_cents ELSE 0 END), 0) as income_cents')
             ->selectRaw('COALESCE(SUM(CASE WHEN amount_cents < 0 THEN -amount_cents ELSE 0 END), 0) as expense_cents')
             ->selectRaw('COALESCE(ROUND(AVG(CASE WHEN amount_cents < 0 THEN -amount_cents END)), 0) as average_spend_cents')
-            ->selectRaw("COALESCE(SUM(CASE WHEN {$atmMatch} THEN -amount_cents ELSE 0 END), 0) as atm_withdrawal_cents", [TransactionType::Other->value])
+            ->selectRaw("COALESCE(SUM(CASE WHEN {$this->atmWithdrawalMatchSql()} THEN -amount_cents ELSE 0 END), 0) as atm_withdrawal_cents", [TransactionType::Other->value])
             ->get();
 
         $count = 0;
-        $income = $expense = $average = $atm = [];
+        $income = [];
+        $expense = [];
+        $average = [];
+        $atm = [];
 
         foreach ($rows as $row) {
             $currency = $row->currency_code;
             $count += (int) $row->transaction_count;
 
-            foreach (
-                [
-                    'income' => (int) $row->income_cents,
-                    'expense' => (int) $row->expense_cents,
-                    'average' => (int) $row->average_spend_cents,
-                    'atm' => (int) $row->atm_withdrawal_cents,
-                ] as $key => $value
-            ) {
-                if ($value !== 0) {
-                    ${$key}[$currency] = $value;
-                }
+            if ((int) $row->income_cents !== 0) {
+                $income[$currency] = (int) $row->income_cents;
+            }
+
+            if ((int) $row->expense_cents !== 0) {
+                $expense[$currency] = (int) $row->expense_cents;
+            }
+
+            if ((int) $row->average_spend_cents !== 0) {
+                $average[$currency] = (int) $row->average_spend_cents;
+            }
+
+            if ((int) $row->atm_withdrawal_cents !== 0) {
+                $atm[$currency] = (int) $row->atm_withdrawal_cents;
             }
         }
 
@@ -362,14 +365,7 @@ readonly class TransactionStats
      */
     public function atmWithdrawalTotalsByCurrency(): array
     {
-        return $this->baseQuery()
-            ->where('type', TransactionType::Other)
-            ->where(fn (Builder $q) => $q
-                ->where('place', 'ilike', '%bankomat%')
-                ->orWhere('place', 'ilike', '%atm%')
-                ->orWhere('description', 'ilike', '%atm%')
-                ->orWhere('description', 'ilike', '%withdrawal%'))
-            ->where('amount_cents', '<', 0)
+        return $this->whereAtmWithdrawal($this->baseQuery())
             ->groupBy('currency_code')
             ->orderBy('currency_code')
             ->selectRaw('currency_code, SUM(-amount_cents) as total_cents')
@@ -459,15 +455,16 @@ readonly class TransactionStats
      */
     public function recurringCharges(int $minMonths = 3): array
     {
-        return $this->baseQuery()
-            ->where('amount_cents', '<', 0)
-            ->groupBy('place')
-            ->selectRaw('place')
-            ->selectRaw("COUNT(DISTINCT date_trunc('month', date)) as months")
-            ->selectRaw('AVG(-amount_cents) as average_cents')
-            ->selectRaw('STDDEV(-amount_cents) as amount_stddev')
-            ->having(DB::raw("COUNT(DISTINCT date_trunc('month', date))"), '>=', $minMonths)
-            ->havingRaw('COALESCE(STDDEV(-amount_cents), 0) <= AVG(-amount_cents) * 0.15')
+        return $this->havingRecurringStability(
+            $this->baseQuery()
+                ->where('amount_cents', '<', 0)
+                ->groupBy('place')
+                ->selectRaw('place')
+                ->selectRaw("COUNT(DISTINCT date_trunc('month', date)) as months")
+                ->selectRaw('AVG(-amount_cents) as average_cents')
+                ->selectRaw('STDDEV(-amount_cents) as amount_stddev'),
+            $minMonths,
+        )
             ->orderByDesc('months')
             ->get()
             ->map(fn ($row) => [
@@ -497,5 +494,24 @@ readonly class TransactionStats
             ->get()
             ->map(fn ($row) => $this->rowToIntArray($row))
             ->all();
+    }
+
+    private function havingRecurringStability(Builder $query, int $minMonths): Builder
+    {
+        return $query
+            ->having(DB::raw("COUNT(DISTINCT date_trunc('month', date))"), '>=', $minMonths)
+            ->havingRaw('COALESCE(STDDEV(-amount_cents), 0) <= AVG(-amount_cents) * 0.15');
+    }
+
+    private function whereAtmWithdrawal(Builder $query): Builder
+    {
+        return $query->whereRaw($this->atmWithdrawalMatchSql(), [TransactionType::Other->value]);
+    }
+
+    private function atmWithdrawalMatchSql(): string
+    {
+        return 'type = ? AND amount_cents < 0 AND ('
+            ."place ILIKE '%bankomat%' OR place ILIKE '%atm%' "
+            ."OR description ILIKE '%atm%' OR description ILIKE '%withdrawal%')";
     }
 }

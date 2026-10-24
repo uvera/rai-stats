@@ -133,7 +133,3 @@ Before relying on a package's API, confirm its installed version:
 ## Custom Filament view styling
 
 Custom Blade views under `resources/views/filament/` (e.g. `filament/pages/*.blade.php`) are rendered by Filament's admin panel, which ships its own precompiled CSS. The app's `resources/css/app.css` Tailwind build is not wired into the Filament panel (no custom theme CSS is registered in `AdminPanelProvider`), so Tailwind utility classes like `mt-4` written in these views are not compiled and silently do nothing. Use inline `style="..."` attributes for spacing/layout tweaks in these views instead, matching the existing pattern in `resources/views/filament/pages/import-transactions.blade.php`.
-
-## Custom Filament view styling
-
-Custom Blade views under `resources/views/filament/` (e.g. `filament/pages/*.blade.php`) are rendered by Filament's admin panel, which ships its own precompiled CSS. The app's `resources/css/app.css` Tailwind build is not wired into the Filament panel (no custom theme CSS is registered in `AdminPanelProvider`), so Tailwind utility classes like `mt-4` written in these views are not compiled and silently do nothing. Use inline `style="..."` attributes for spacing/layout tweaks in these views instead, matching the existing pattern in `resources/views/filament/pages/import-transactions.blade.php`.

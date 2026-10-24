@@ -2,6 +2,7 @@
 
 namespace App\Services\Receipts\Data;
 
+use App\Support\Cents;
 use Carbon\CarbonImmutable;
 
 /**
@@ -40,7 +41,7 @@ readonly class InvoiceSummary
         return new self(
             externalRef: (string) $row['InvoiceNumberHash'],
             purchasedAt: $purchasedAt,
-            totalCents: (int) round(((float) ($row['TotalAmount'] ?? 0)) * 100),
+            totalCents: Cents::fromJson($row['TotalAmount'] ?? 0) ?? 0,
             storeName: (string) ($row['StoreName'] ?? ''),
             storeAddress: isset($row['StoreAddress']) ? (string) $row['StoreAddress'] : null,
             // Their API key is misspelled "StoreFromat" - tolerate both.
@@ -61,10 +62,10 @@ readonly class InvoiceSummary
         return new self(
             externalRef: $transactionId,
             purchasedAt: CarbonImmutable::parse((string) ($row['invoiceDate'] ?? 'now')),
-            totalCents: (int) round(((float) ($row['totalAmount'] ?? 0)) * 100),
+            totalCents: Cents::fromJson($row['totalAmount'] ?? 0) ?? 0,
             storeName: self::metroStoreName($transactionId),
             netTotalCents: isset($row['netAmount'])
-                ? (int) round(((float) $row['netAmount']) * 100)
+                ? (Cents::fromJson($row['netAmount']) ?? 0)
                 : null,
             remoteId: $transactionId,
         );

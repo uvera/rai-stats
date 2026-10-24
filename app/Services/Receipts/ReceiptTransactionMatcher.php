@@ -27,6 +27,7 @@ class ReceiptTransactionMatcher
 
         $candidates = Transaction::query()
             ->where('user_id', $userId)
+            ->excludingReserved()
             ->where('amount_cents', -$receipt->total_cents)
             ->whereBetween('date', [
                 $receipt->purchased_at->copy()->subDays(3)->startOfDay(),
@@ -62,9 +63,16 @@ class ReceiptTransactionMatcher
      */
     public function candidatesFor(GroceryReceipt $receipt, int $amountToleranceCents = 200, int $dayWindow = 10): Builder
     {
+        $userId = $receipt->account->user_id;
         $spend = -$receipt->total_cents;
 
         return Transaction::query()
+            ->when(
+                $userId === null,
+                fn (Builder $query) => $query->whereRaw('0 = 1'),
+                fn (Builder $query) => $query->where('user_id', $userId),
+            )
+            ->excludingReserved()
             ->whereBetween('amount_cents', [$spend - $amountToleranceCents, $spend + $amountToleranceCents])
             ->whereBetween('date', [
                 $receipt->purchased_at->copy()->subDays($dayWindow)->startOfDay(),

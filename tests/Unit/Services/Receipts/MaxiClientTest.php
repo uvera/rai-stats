@@ -148,7 +148,30 @@ class MaxiClientTest extends TestCase
     {
         $client = $this->client([new Response(200, ['Content-Type' => 'application/pdf'], '%PDF-1.4 fake')]);
 
-        $this->assertSame('%PDF-1.4 fake', $client->downloadReceipt('https://example.test/eReceipt/x', 'dev-uuid'));
+        $this->assertSame('%PDF-1.4 fake', $client->downloadReceipt('https://mobileloyalty-prod.delhaize.rs/eReceipt/x', 'dev-uuid'));
+    }
+
+    public function test_download_receipt_refuses_a_url_outside_the_loyalty_host(): void
+    {
+        $client = $this->client([new Response(200, [], '%PDF-1.4 fake')]);
+
+        $this->expectException(ReceiptException::class);
+        $client->downloadReceipt('http://127.0.0.1/latest/meta-data', 'dev-uuid');
+    }
+
+    public function test_login_error_does_not_include_the_response_body(): void
+    {
+        $client = $this->client([
+            new Response(500, [], json_encode(['secret' => 'SECRET-UPSTREAM-BODY'])),
+        ]);
+
+        try {
+            $client->login('a@b.c', 'secret', 'dev-uuid');
+            $this->fail('Expected a receipt exception.');
+        } catch (ReceiptException $e) {
+            $this->assertStringNotContainsString('SECRET-UPSTREAM-BODY', $e->getMessage());
+            $this->assertStringContainsString('500', $e->getMessage());
+        }
     }
 
     public function test_store_id_reads_the_profile(): void

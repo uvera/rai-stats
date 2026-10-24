@@ -104,6 +104,30 @@ class RaiffeisenImportJobTest extends TestCase
         $this->assertSame(1, Transaction::query()->where('type', TransactionType::Reserved->value)->count());
     }
 
+    public function test_a_reserved_funds_failure_keeps_the_turnover_that_was_already_stored(): void
+    {
+        $user = User::factory()->create();
+        $this->account($user);
+
+        $sessionId = RaiffeisenImportSession::start($user->id);
+        RaiffeisenImportSession::setState($sessionId, ['cookies' => ['a' => 'b']]);
+
+        $client = Mockery::mock(RaiffeisenClient::class);
+        $client->shouldReceive('transactionalAccountTurnover')->once()
+            ->andReturn([$this->dto('b-1'), $this->dto('b-2')]);
+        $client->shouldReceive('transactionalAccountReservedFunds')->once()
+            ->andThrow(new RaiffeisenException('reserved funds unavailable'));
+
+        $this->runJob($sessionId, $user->id, [
+            ['account_number' => '11111', 'from' => '2026-01-01', 'to' => '2026-03-31'],
+        ], $client);
+
+        $result = RaiffeisenImportSession::getState($sessionId)['import_results'][0];
+        $this->assertTrue($result['failed']);
+        $this->assertSame(2, $result['inserted']);
+        $this->assertSame(2, Transaction::query()->count());
+    }
+
     public function test_a_failing_account_is_recorded_and_the_run_continues(): void
     {
         $user = User::factory()->create();

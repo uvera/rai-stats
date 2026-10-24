@@ -7,6 +7,7 @@ use App\Services\Raiffeisen\Data\LoginResult;
 use App\Services\Raiffeisen\Data\PushLoginResult;
 use App\Services\Raiffeisen\Data\ReservedTransaction;
 use App\Services\Raiffeisen\Data\Transaction;
+use App\Support\JsonBody;
 use GuzzleHttp\Client;
 use GuzzleHttp\Cookie\CookieJar;
 use GuzzleHttp\Cookie\SetCookie;
@@ -110,7 +111,7 @@ class RaiffeisenClient
         );
 
         if ($response->getStatusCode() !== 200) {
-            throw new RaiffeisenException("Unexpected LoginFont status {$response->getStatusCode()}: {$response->getBody()}");
+            throw new RaiffeisenException("Unexpected LoginFont status {$response->getStatusCode()}.");
         }
 
         $data = $this->decodeJson($response->getBody()->getContents());
@@ -263,7 +264,7 @@ class RaiffeisenClient
         );
 
         if ($response->getStatusCode() !== 200) {
-            throw new RaiffeisenException("Unexpected LoginUPPush status {$response->getStatusCode()}: {$response->getBody()}");
+            throw new RaiffeisenException("Unexpected LoginUPPush status {$response->getStatusCode()}.");
         }
     }
 
@@ -374,7 +375,7 @@ class RaiffeisenClient
         ]);
 
         if ($response->getStatusCode() !== 200) {
-            throw new RaiffeisenException("negotiate status {$response->getStatusCode()}: {$response->getBody()}");
+            throw new RaiffeisenException("negotiate status {$response->getStatusCode()}.");
         }
 
         $data = json_decode($response->getBody()->getContents(), true);
@@ -456,7 +457,7 @@ class RaiffeisenClient
         ]);
 
         if ($response->getStatusCode() !== 200) {
-            throw new RaiffeisenException("start status {$response->getStatusCode()}: {$response->getBody()}");
+            throw new RaiffeisenException("start status {$response->getStatusCode()}.");
         }
 
         return $response;
@@ -488,7 +489,7 @@ class RaiffeisenClient
         ]);
 
         if ($response->getStatusCode() !== 200) {
-            throw new RaiffeisenException("send status {$response->getStatusCode()}: {$response->getBody()}");
+            throw new RaiffeisenException("send status {$response->getStatusCode()}.");
         }
 
         return $response;
@@ -496,16 +497,7 @@ class RaiffeisenClient
 
     private function decodeJson(string $body): array
     {
-        if (str_starts_with($body, "\xEF\xBB\xBF")) {
-            $body = substr($body, 3);
-        }
-
-        $decoded = json_decode($body, true);
-
-        if (! is_array($decoded)) {
-            throw new RaiffeisenException('Failed to decode JSON response: '.json_last_error_msg());
-        }
-
-        return $decoded;
+        return JsonBody::decode($body)
+            ?? throw new RaiffeisenException('Failed to decode JSON response: '.json_last_error_msg());
     }
 }

@@ -33,7 +33,11 @@ class LargestTransactionsTable extends TableWidget
                     ->alignEnd()
                     // Sorted by ABS(amount_cents), not the signed value, so
                     // "largest" means biggest magnitude regardless of sign.
-                    ->sortable(query: fn (Builder $query, string $direction) => $query->orderByRaw("ABS(amount_cents) {$direction}")),
+                    ->sortable(query: function (Builder $query, string $direction): Builder {
+                        $direction = $direction === 'asc' ? 'asc' : 'desc';
+
+                        return $query->orderByRaw("ABS(amount_cents) {$direction}");
+                    }),
             ])
             ->defaultSort('amount_cents', 'desc');
     }

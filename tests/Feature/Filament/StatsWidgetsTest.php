@@ -98,6 +98,31 @@ class StatsWidgetsTest extends TestCase
             ->assertSeeText('Big Purchase Inc');
     }
 
+    public function test_largest_transactions_sort_ignores_a_direction_that_is_not_asc_or_desc(): void
+    {
+        $user = User::factory()->create();
+        $account = Account::factory()->for($user)->create();
+        Transaction::factory()->for($account)->for($user)->create([
+            'place' => 'Big Purchase Inc',
+            'amount_cents' => -99999,
+            'date' => now(),
+        ]);
+
+        $this->actingAs($user);
+
+        $component = Livewire::test(LargestTransactionsTable::class, [
+            'userId' => $user->id,
+            'pageFilters' => $this->pageFilters(),
+        ])->instance();
+
+        $query = Transaction::query();
+        $component->getTable()->getColumn('amount_cents')->applySort($query, 'desc; drop table users');
+
+        $sql = strtolower($query->toSql());
+        $this->assertStringNotContainsString('drop', $sql);
+        $this->assertStringContainsString('desc', $sql);
+    }
+
     public function test_spend_by_category_chart_renders(): void
     {
         $user = User::factory()->create();

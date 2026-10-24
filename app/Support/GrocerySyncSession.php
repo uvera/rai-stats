@@ -2,7 +2,9 @@
 
 namespace App\Support;
 
+use Illuminate\Contracts\Encryption\DecryptException;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\Crypt;
 use Illuminate\Support\Str;
 
 /**
@@ -11,8 +13,10 @@ use Illuminate\Support\Str;
  * job's progress back for the UI.
  *
  * The password only ever lives in its own single-read, short-TTL key,
- * separate from the state, and is deleted the instant the job reads it -
- * mirroring RaiffeisenImportSession.
+ * separate from the state, and is deleted the instant the job reads it.
+ * The cache store is the database, so the password is encrypted at rest
+ * the same way RaiffeisenImportSession encrypts its password. A value that
+ * is not a valid ciphertext is discarded.
  */
 class GrocerySyncSession
 {
@@ -31,7 +35,7 @@ class GrocerySyncSession
 
     public static function setPassword(string $sessionId, string $password): void
     {
-        Cache::put(self::passwordKey($sessionId), $password, self::PASSWORD_TTL_SECONDS);
+        Cache::put(self::passwordKey($sessionId), Crypt::encryptString($password), self::PASSWORD_TTL_SECONDS);
     }
 
     /**
@@ -39,10 +43,18 @@ class GrocerySyncSession
      */
     public static function takePassword(string $sessionId): ?string
     {
-        $password = Cache::get(self::passwordKey($sessionId));
+        $stored = Cache::get(self::passwordKey($sessionId));
         Cache::forget(self::passwordKey($sessionId));
 
-        return $password;
+        if (! is_string($stored)) {
+            return null;
+        }
+
+        try {
+            return Crypt::decryptString($stored);
+        } catch (DecryptException) {
+            return null;
+        }
     }
 
     public static function setState(string $sessionId, array $data): void

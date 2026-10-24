@@ -11,6 +11,7 @@ use App\Services\Receipts\Data\ParsedReceipt;
 use App\Services\Receipts\Data\ProviderToken;
 use App\Services\Receipts\ReceiptAuthException;
 use App\Services\Receipts\ReceiptPdfParser;
+use App\Support\Cents;
 use Throwable;
 
 /**
@@ -57,17 +58,17 @@ class MetroProvider implements ProviderClient
 
         $items = [];
         foreach (array_values($articles) as $i => $article) {
-            $gross = (int) round(((float) ($article['grossItemTotal'] ?? 0)) * 100);
-            $net = (int) round(((float) ($article['netItemTotal'] ?? 0)) * 100);
+            $gross = Cents::fromJson($article['grossItemTotal'] ?? 0) ?? 0;
+            $net = Cents::fromJson($article['netItemTotal'] ?? 0) ?? 0;
 
             $items[] = new ParsedItem(
                 lineNo: $i + 1,
                 name: trim((string) ($article['description'] ?? '')),
                 quantity: (float) ($article['quantity'] ?? 1),
-                unitPriceCents: (int) round(((float) ($article['grossItemPrice'] ?? 0)) * 100),
+                unitPriceCents: Cents::fromJson($article['grossItemPrice'] ?? 0) ?? 0,
                 totalCents: $gross,
                 vatRate: $net > 0 ? round(($gross / $net - 1) * 100, 2) : null,
-                netUnitPriceCents: (int) round(((float) ($article['netItemPrice'] ?? 0)) * 100),
+                netUnitPriceCents: Cents::fromJson($article['netItemPrice'] ?? 0) ?? 0,
                 netTotalCents: $net,
             );
         }

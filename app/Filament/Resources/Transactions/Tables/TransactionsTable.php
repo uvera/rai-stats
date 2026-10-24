@@ -78,6 +78,7 @@ class TransactionsTable
                     ->label('Categorize')
                     ->icon(Heroicon::OutlinedTag)
                     ->color('gray')
+                    ->visible(fn (): bool => (bool) auth()->user()?->isAdmin())
                     ->form([
                         Select::make('category_id')
                             ->label('Category')

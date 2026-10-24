@@ -21,6 +21,7 @@ class ListProductCategories extends ListRecords
                 ->label('Recategorize items now')
                 ->icon(Heroicon::OutlinedArrowPath)
                 ->color('gray')
+                ->visible(fn (): bool => (bool) auth()->user()?->isAdmin())
                 ->requiresConfirmation()
                 ->action(function (): void {
                     Artisan::call('groceries:recategorize-items');

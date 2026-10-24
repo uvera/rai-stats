@@ -18,7 +18,7 @@ class RaiffeisenClientTest extends TestCase
     {
         $mock = new MockHandler($responses);
         $handlerStack = HandlerStack::create($mock);
-        $http = new Client(['handler' => $handlerStack]);
+        $http = new Client(['handler' => $handlerStack, 'http_errors' => false]);
 
         return [new RaiffeisenClient(http: $http), $mock];
     }
@@ -75,6 +75,21 @@ class RaiffeisenClientTest extends TestCase
         $result = $client->loginFont('testuser', 'testpass123');
 
         $this->assertTrue($result->forceSecondLogin);
+    }
+
+    public function test_login_font_error_does_not_include_the_response_body(): void
+    {
+        [$client] = $this->clientWithMockedResponses([
+            new Response(500, [], 'SECRET-UPSTREAM-BODY'),
+        ]);
+
+        try {
+            $client->loginFont('testuser', 'testpass123');
+            $this->fail('Expected a Raiffeisen exception.');
+        } catch (RaiffeisenException $e) {
+            $this->assertStringNotContainsString('SECRET-UPSTREAM-BODY', $e->getMessage());
+            $this->assertStringContainsString('500', $e->getMessage());
+        }
     }
 
     public function test_all_account_balance_parses_rows_and_tolerates_empty_last_transaction(): void

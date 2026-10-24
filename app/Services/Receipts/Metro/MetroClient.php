@@ -5,6 +5,7 @@ namespace App\Services\Receipts\Metro;
 use App\Services\Receipts\Data\ProviderToken;
 use App\Services\Receipts\ReceiptAuthException;
 use App\Services\Receipts\ReceiptException;
+use App\Support\JsonBody;
 use GuzzleHttp\Client;
 use GuzzleHttp\Exception\TransferException;
 use Illuminate\Support\Str;
@@ -81,9 +82,8 @@ class MetroClient
     public function listInvoices(string $accessToken): array
     {
         $rows = [];
-        $page = 1;
 
-        do {
+        for ($page = 1; $page <= 50; $page++) {
             $body = $this->getJson(
                 $accessToken,
                 '/companion-finance/v1/invoices?page='.$page.'&locale=en-US'
@@ -92,8 +92,11 @@ class MetroClient
             $batch = $body['invoices'] ?? [];
             $rows = [...$rows, ...$batch];
             $found = (int) ($body['numFound'] ?? count($rows));
-            $page++;
-        } while ($batch !== [] && count($rows) < $found);
+
+            if ($batch === [] || count($rows) >= $found) {
+                break;
+            }
+        }
 
         return $rows;
     }
@@ -208,7 +211,7 @@ class MetroClient
         }
 
         if ($status !== 200) {
-            throw new ReceiptException("Unexpected Metro token status {$status}: ".substr((string) $response->getBody(), 0, 300));
+            throw new ReceiptException("Unexpected Metro token status {$status}.");
         }
 
         $token = $body['access_token'] ?? null;
@@ -314,16 +317,7 @@ class MetroClient
      */
     private function decodeJson(string $body): array
     {
-        if (str_starts_with($body, "\xEF\xBB\xBF")) {
-            $body = substr($body, 3);
-        }
-
-        $decoded = json_decode($body, true);
-
-        if (! is_array($decoded)) {
-            throw new ReceiptException('Failed to decode Metro JSON response: '.json_last_error_msg());
-        }
-
-        return $decoded;
+        return JsonBody::decode($body)
+            ?? throw new ReceiptException('Failed to decode Metro JSON response: '.json_last_error_msg());
     }
 }

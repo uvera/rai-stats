@@ -2,7 +2,9 @@
 
 namespace Tests\Feature\Filament;
 
+use App\Filament\Resources\Categories\CategoryResource;
 use App\Filament\Resources\Categories\Pages\ListCategories;
+use App\Filament\Resources\ProductCategories\Pages\ListProductCategories;
 use App\Models\Category;
 use App\Models\MerchantCategoryRule;
 use App\Models\User;
@@ -29,7 +31,7 @@ class CategoriesPageTest extends TestCase
 
     public function test_import_categories_action_imports_uploaded_json(): void
     {
-        $admin = User::factory()->create();
+        $admin = User::factory()->admin()->create();
         $this->actingAs($admin);
 
         $path = sys_get_temp_dir().'/categories-page-test-import.json';
@@ -52,7 +54,7 @@ class CategoriesPageTest extends TestCase
 
     public function test_recategorize_action_updates_transactions(): void
     {
-        $admin = User::factory()->create();
+        $admin = User::factory()->admin()->create();
         $category = Category::factory()->create();
         MerchantCategoryRule::factory()->for($category)->create(['pattern' => 'MAXI']);
 
@@ -61,5 +63,43 @@ class CategoriesPageTest extends TestCase
         Livewire::test(ListCategories::class)
             ->callAction('recategorize')
             ->assertOk();
+    }
+
+    public function test_only_admins_may_change_merchant_categories(): void
+    {
+        $category = Category::factory()->create();
+        $member = User::factory()->create();
+        $admin = User::factory()->admin()->create();
+
+        $this->actingAs($member);
+        $this->assertTrue(CategoryResource::canViewAny());
+        $this->assertFalse(CategoryResource::canCreate());
+        $this->assertFalse(CategoryResource::canEdit($category));
+
+        Livewire::test(ListCategories::class)
+            ->assertActionHidden('create')
+            ->assertActionHidden('recategorize')
+            ->assertActionHidden('importCategories')
+            ->assertActionVisible('exportCategories');
+
+        $this->actingAs($admin);
+        $this->assertTrue(CategoryResource::canCreate());
+        $this->assertTrue(CategoryResource::canEdit($category));
+
+        Livewire::test(ListCategories::class)
+            ->assertActionVisible('create')
+            ->assertActionVisible('recategorize')
+            ->assertActionVisible('importCategories');
+    }
+
+    public function test_only_admins_may_recategorize_product_items(): void
+    {
+        $this->actingAs(User::factory()->create());
+        Livewire::test(ListProductCategories::class)
+            ->assertActionHidden('recategorizeItems');
+
+        $this->actingAs(User::factory()->admin()->create());
+        Livewire::test(ListProductCategories::class)
+            ->assertActionVisible('recategorizeItems');
     }
 }

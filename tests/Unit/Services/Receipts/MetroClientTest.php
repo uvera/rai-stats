@@ -89,6 +89,35 @@ class MetroClientTest extends TestCase
         $this->assertSame('c', $rows[2]['transactionId']);
     }
 
+    public function test_list_invoices_stops_after_fifty_pages_when_the_total_never_catches_up(): void
+    {
+        $pages = array_fill(0, 51, new Response(200, [], json_encode([
+            'numFound' => 100000,
+            'invoices' => [['transactionId' => 'stuck']],
+        ])));
+        $client = $this->client($pages);
+
+        $rows = $client->listInvoices('token');
+
+        $this->assertCount(50, $rows);
+        $this->assertCount(50, $this->history);
+    }
+
+    public function test_token_error_does_not_include_the_response_body(): void
+    {
+        $client = $this->client([
+            new Response(500, [], json_encode(['secret' => 'SECRET-UPSTREAM-BODY'])),
+        ]);
+
+        try {
+            $client->login('a@b.c', 'secret');
+            $this->fail('Expected a receipt exception.');
+        } catch (ReceiptException $e) {
+            $this->assertStringNotContainsString('SECRET-UPSTREAM-BODY', $e->getMessage());
+            $this->assertStringContainsString('500', $e->getMessage());
+        }
+    }
+
     public function test_fetch_articles_unwraps_the_list(): void
     {
         $client = $this->client([

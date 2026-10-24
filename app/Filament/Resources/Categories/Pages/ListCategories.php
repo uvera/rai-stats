@@ -24,6 +24,7 @@ class ListCategories extends ListRecords
                 ->label('Recategorize transactions now')
                 ->icon(Heroicon::OutlinedArrowPath)
                 ->color('gray')
+                ->visible(fn (): bool => (bool) auth()->user()?->isAdmin())
                 ->requiresConfirmation()
                 ->action(function (): void {
                     Artisan::call('transactions:recategorize');
@@ -39,13 +40,14 @@ class ListCategories extends ListRecords
                 ->icon(Heroicon::OutlinedArrowDownTray)
                 ->color('gray')
                 ->action(fn (MerchantCategoryData $merchantCategoryData) => response()->streamDownload(
-                    fn () => print(json_encode($merchantCategoryData->export(), JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE)),
+                    fn () => print (json_encode($merchantCategoryData->export(), JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE)),
                     'merchant-categories.json',
                 )),
             Action::make('importCategories')
                 ->label('Import categories')
                 ->icon(Heroicon::OutlinedArrowUpTray)
                 ->color('gray')
+                ->visible(fn (): bool => (bool) auth()->user()?->isAdmin())
                 ->form([
                     FileUpload::make('file')
                         ->label('JSON file')

@@ -78,7 +78,7 @@ class SyncGroceryAccountJobTest extends TestCase
             'StoreName' => 'Mega Maxi 02 Novi Sad',
             'StoreAddress' => 'Tekelijina bb',
             'StoreFromat' => 'MEGA MAXI',
-            'InvoicePdfUrl' => 'https://example.test/eReceipt/'.$hash,
+            'InvoicePdfUrl' => 'https://mobileloyalty-prod.delhaize.rs/eReceipt/'.$hash,
         ];
     }
 

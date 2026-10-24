@@ -3,6 +3,7 @@
 namespace App\Services\Promotions;
 
 use App\Enums\PromotionSource;
+use App\Support\Cents;
 use Carbon\CarbonImmutable;
 use Throwable;
 
@@ -19,7 +20,7 @@ class MaxiPromotion
     {
         $articleId = $article['ArticleId'] ?? null;
         $name = trim((string) ($article['ArticleName'] ?? ''));
-        $gross = self::cents($article['DiscountPrice'] ?? null);
+        $gross = Cents::fromJson($article['DiscountPrice'] ?? null);
 
         if (! is_scalar($articleId) || (string) $articleId === '' || $name === '' || $gross === null) {
             return null;
@@ -37,20 +38,11 @@ class MaxiPromotion
             'brand' => is_string($brand) && $brand !== '' ? $brand : null,
             'image_url' => is_string($image) && $image !== '' ? $image : null,
             'gross_cents' => $gross,
-            'strike_gross_cents' => self::cents($article['RegularPrice'] ?? null),
+            'strike_gross_cents' => Cents::fromJson($article['RegularPrice'] ?? null),
             'starts_on' => self::date($article['DateFromForDiscountPrice'] ?? null),
             'ends_on' => self::date($article['DateToForDiscountPrice'] ?? null),
             'fetched_at' => now(),
         ];
-    }
-
-    private static function cents(mixed $amount): ?int
-    {
-        if (! is_numeric($amount)) {
-            return null;
-        }
-
-        return (int) round(((float) $amount) * 100);
     }
 
     private static function date(mixed $value): ?string

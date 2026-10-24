@@ -3,6 +3,7 @@
 namespace App\Services\Promotions;
 
 use App\Enums\PromotionSource;
+use App\Support\Cents;
 use Carbon\CarbonImmutable;
 use Throwable;
 
@@ -22,7 +23,7 @@ class RankedPromotion
         $price = is_array($price) ? $price : [];
         $shopVariantId = $article['shopVariantId'] ?? null;
         $name = trim((string) ($article['name'] ?? ($bundle['description'] ?? '')));
-        $gross = self::cents($price['articleGross'] ?? null);
+        $gross = Cents::fromJson($price['articleGross'] ?? null);
 
         if (! is_string($shopVariantId) || $shopVariantId === '' || $name === '' || $gross === null) {
             return null;
@@ -40,7 +41,7 @@ class RankedPromotion
             'brand' => is_string($brand) && $brand !== '' ? $brand : null,
             'image_url' => self::image($article, $bundle),
             'gross_cents' => $gross,
-            'strike_gross_cents' => self::cents($price['strikeThroughGross'] ?? null),
+            'strike_gross_cents' => Cents::fromJson($price['strikeThroughGross'] ?? null),
             'starts_on' => self::date($promotion['startDate'] ?? null),
             'ends_on' => self::date($promotion['endDate'] ?? null),
             'fetched_at' => now(),
@@ -68,15 +69,6 @@ class RankedPromotion
         $url = $article['imageUrl'] ?? ($bundle['images'][0]['urlLarge'] ?? null);
 
         return is_string($url) && $url !== '' ? $url : null;
-    }
-
-    private static function cents(mixed $amount): ?int
-    {
-        if (! is_numeric($amount)) {
-            return null;
-        }
-
-        return (int) round(((float) $amount) * 100);
     }
 
     private static function date(mixed $value): ?string
