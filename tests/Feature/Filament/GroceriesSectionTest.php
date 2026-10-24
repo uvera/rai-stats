@@ -2,6 +2,8 @@
 
 namespace Tests\Feature\Filament;
 
+use App\Enums\ReceiptMatchSource;
+use App\Enums\TransactionType;
 use App\Filament\Pages\GroceryStats;
 use App\Filament\Resources\ArticlePrices\ArticlePriceResource;
 use App\Filament\Resources\ArticlePrices\Pages\ListArticlePrices;
@@ -20,10 +22,12 @@ use App\Filament\Widgets\Groceries\GroceryStatsOverview;
 use App\Filament\Widgets\Groceries\ProductCategorySpendChart;
 use App\Filament\Widgets\Groceries\StaplesTable;
 use App\Filament\Widgets\Groceries\TopProductsChart;
+use App\Models\Account;
 use App\Models\GroceryAccount;
 use App\Models\GroceryReceipt;
 use App\Models\GroceryReceiptItem;
 use App\Models\ProductCategory;
+use App\Models\Transaction;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Livewire\Livewire;
@@ -139,6 +143,117 @@ class GroceriesSectionTest extends TestCase
         $this->actingAs(User::factory()->admin()->create());
         Livewire::test(ViewGroceryReceipt::class, ['record' => $receipt->getKey()])
             ->assertActionVisible('linkTransaction');
+    }
+
+    public function test_link_modal_lists_transactions_and_closes_after_a_link(): void
+    {
+        $this->actingAs(User::factory()->admin()->create());
+        $receipt = GroceryReceipt::factory()->create([
+            'store_name' => 'Maxi 249',
+            'purchased_at' => '2026-09-29 15:19:00',
+            'total_cents' => 164233,
+        ]);
+        $owner = User::factory()->create();
+        $transaction = Transaction::factory()
+            ->for(Account::factory()->for($owner))
+            ->for($owner)
+            ->create([
+                'amount_cents' => -164233,
+                'date' => '2026-09-29 00:00:00',
+                'type' => TransactionType::Pos,
+                'place' => '213 MAXI 249 SRB',
+            ]);
+
+        $page = Livewire::test(ViewGroceryReceipt::class, ['record' => $receipt->getKey()])
+            ->assertSee('Not linked')
+            ->mountAction('linkTransaction')
+            ->assertActionMounted('linkTransaction');
+
+        $receipt->update([
+            'transaction_id' => $transaction->id,
+            'match_source' => ReceiptMatchSource::Manual,
+        ]);
+
+        $page->dispatch('grocery-receipt-linked')
+            ->assertSee('213 MAXI 249 SRB')
+            ->assertDontSee('Not linked')
+            ->assertActionNotMounted('linkTransaction');
+    }
+
+    public function test_admin_can_auto_match_existing_receipts_from_the_list(): void
+    {
+        $owner = User::factory()->create();
+        $account = GroceryAccount::factory()->create(['user_id' => $owner->id]);
+        $receipt = GroceryReceipt::factory()->create([
+            'grocery_account_id' => $account->id,
+            'total_cents' => 10000,
+            'purchased_at' => '2026-08-26 12:00:00',
+        ]);
+        $payment = Transaction::factory()
+            ->for(Account::factory()->for($owner))
+            ->for($owner)
+            ->create([
+                'amount_cents' => -10000,
+                'date' => '2026-08-26 12:00:00',
+                'type' => TransactionType::Pos,
+                'place' => 'MAXI',
+            ]);
+
+        $this->actingAs(User::factory()->create());
+        Livewire::test(ListGroceryReceipts::class)
+            ->assertActionHidden('autoMatchReceipts');
+
+        $this->actingAs(User::factory()->admin()->create());
+        Livewire::test(ListGroceryReceipts::class)
+            ->callAction('autoMatchReceipts');
+
+        $this->assertSame($payment->id, $receipt->fresh()->transaction_id);
+        $this->assertSame(ReceiptMatchSource::Auto, $receipt->fresh()->match_source);
+    }
+
+    public function test_auto_match_on_an_account_does_not_link_another_accounts_receipt(): void
+    {
+        $this->actingAs(User::factory()->admin()->create());
+
+        $owner = User::factory()->create();
+        $account = GroceryAccount::factory()->create(['user_id' => $owner->id]);
+        $receipt = GroceryReceipt::factory()->create([
+            'grocery_account_id' => $account->id,
+            'total_cents' => 10000,
+            'purchased_at' => '2026-08-26 12:00:00',
+        ]);
+        $payment = Transaction::factory()
+            ->for(Account::factory()->for($owner))
+            ->for($owner)
+            ->create([
+                'amount_cents' => -10000,
+                'date' => '2026-08-26 12:00:00',
+                'type' => TransactionType::Pos,
+                'place' => 'MAXI',
+            ]);
+
+        $otherOwner = User::factory()->create();
+        $otherAccount = GroceryAccount::factory()->create(['user_id' => $otherOwner->id]);
+        $otherReceipt = GroceryReceipt::factory()->create([
+            'grocery_account_id' => $otherAccount->id,
+            'total_cents' => 8000,
+            'purchased_at' => '2026-08-26 12:00:00',
+        ]);
+        Transaction::factory()
+            ->for(Account::factory()->for($otherOwner))
+            ->for($otherOwner)
+            ->create([
+                'amount_cents' => -8000,
+                'date' => '2026-08-26 12:00:00',
+                'type' => TransactionType::Pos,
+                'place' => 'MAXI',
+            ]);
+
+        Livewire::test(ListGroceryAccounts::class)
+            ->callTableAction('autoMatchReceipts', $account);
+
+        $this->assertSame($payment->id, $receipt->fresh()->transaction_id);
+        $this->assertNull($otherReceipt->fresh()->transaction_id);
     }
 
     public function test_article_prices_list_searches_and_the_view_shows_history(): void

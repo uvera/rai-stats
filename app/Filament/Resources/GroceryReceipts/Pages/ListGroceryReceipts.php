@@ -2,6 +2,7 @@
 
 namespace App\Filament\Resources\GroceryReceipts\Pages;
 
+use App\Filament\Groceries\AutoMatchReceiptsAction;
 use App\Filament\Resources\GroceryReceipts\GroceryReceiptResource;
 use Filament\Resources\Pages\ListRecords;
 
@@ -11,6 +12,8 @@ class ListGroceryReceipts extends ListRecords
 
     protected function getHeaderActions(): array
     {
-        return [];
+        return [
+            AutoMatchReceiptsAction::forAll(),
+        ];
     }
 }

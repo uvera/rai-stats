@@ -2,6 +2,7 @@
 
 namespace App\Filament\Resources\GroceryAccounts\Pages;
 
+use App\Filament\Groceries\AutoMatchReceiptsAction;
 use App\Filament\Groceries\GrocerySyncAction;
 use App\Filament\Resources\GroceryAccounts\GroceryAccountResource;
 use Filament\Actions\DeleteAction;
@@ -16,6 +17,7 @@ class EditGroceryAccount extends EditRecord
         return [
             GrocerySyncAction::sync(),
             GrocerySyncAction::signInAndSync(),
+            AutoMatchReceiptsAction::forAccount(),
             DeleteAction::make(),
         ];
     }

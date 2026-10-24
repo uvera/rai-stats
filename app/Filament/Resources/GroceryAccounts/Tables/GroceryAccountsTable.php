@@ -3,6 +3,7 @@
 namespace App\Filament\Resources\GroceryAccounts\Tables;
 
 use App\Enums\ReceiptProvider;
+use App\Filament\Groceries\AutoMatchReceiptsAction;
 use App\Filament\Groceries\GrocerySyncAction;
 use App\Models\GroceryAccount;
 use Filament\Actions\DeleteAction;
@@ -64,6 +65,7 @@ class GroceryAccountsTable
             ->recordActions([
                 GrocerySyncAction::sync(),
                 GrocerySyncAction::signInAndSync(),
+                AutoMatchReceiptsAction::forAccount(),
                 EditAction::make(),
                 DeleteAction::make(),
             ]);
