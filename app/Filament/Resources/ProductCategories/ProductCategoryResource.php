@@ -5,6 +5,7 @@ namespace App\Filament\Resources\ProductCategories;
 use App\Filament\Resources\ProductCategories\Pages\CreateProductCategory;
 use App\Filament\Resources\ProductCategories\Pages\EditProductCategory;
 use App\Filament\Resources\ProductCategories\Pages\ListProductCategories;
+use App\Filament\Resources\ProductCategories\RelationManagers\ArticlesRelationManager;
 use App\Filament\Resources\ProductCategories\RelationManagers\RulesRelationManager;
 use App\Filament\Resources\ProductCategories\Schemas\ProductCategoryForm;
 use App\Filament\Resources\ProductCategories\Tables\ProductCategoriesTable;
@@ -42,6 +43,7 @@ class ProductCategoryResource extends Resource
     {
         return [
             RulesRelationManager::class,
+            ArticlesRelationManager::class,
         ];
     }
 

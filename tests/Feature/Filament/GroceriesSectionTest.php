@@ -3,12 +3,16 @@
 namespace Tests\Feature\Filament;
 
 use App\Filament\Pages\GroceryStats;
+use App\Filament\Resources\ArticlePrices\ArticlePriceResource;
 use App\Filament\Resources\ArticlePrices\Pages\ListArticlePrices;
 use App\Filament\Resources\ArticlePrices\Pages\ViewArticlePrice;
 use App\Filament\Resources\GroceryAccounts\Pages\CreateGroceryAccount;
 use App\Filament\Resources\GroceryAccounts\Pages\ListGroceryAccounts;
 use App\Filament\Resources\GroceryReceipts\Pages\ListGroceryReceipts;
 use App\Filament\Resources\GroceryReceipts\Pages\ViewGroceryReceipt;
+use App\Filament\Resources\GroceryReceipts\RelationManagers\ItemsRelationManager;
+use App\Filament\Resources\ProductCategories\Pages\EditProductCategory;
+use App\Filament\Resources\ProductCategories\RelationManagers\ArticlesRelationManager;
 use App\Filament\Widgets\Groceries\ArticlePriceHistoryChart;
 use App\Filament\Widgets\Groceries\ArticlePurchasesTable;
 use App\Filament\Widgets\Groceries\BasketSizeOverTimeChart;
@@ -18,6 +22,7 @@ use App\Filament\Widgets\Groceries\TopProductsChart;
 use App\Models\GroceryAccount;
 use App\Models\GroceryReceipt;
 use App\Models\GroceryReceiptItem;
+use App\Models\ProductCategory;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Livewire\Livewire;
@@ -205,6 +210,72 @@ class GroceriesSectionTest extends TestCase
             ->assertCanSeeTableRecords([$pricier, $cheaper], inOrder: true)
             ->sortTable('unit_price_cents')
             ->assertCanSeeTableRecords([$cheaper, $pricier], inOrder: true);
+    }
+
+    public function test_receipt_items_link_to_article_price_history(): void
+    {
+        $this->actingAs(User::factory()->create());
+
+        $receipt = GroceryReceipt::factory()->create();
+        $milk = GroceryReceiptItem::factory()->for($receipt, 'receipt')->create([
+            'line_no' => 1,
+            'name' => 'Milk',
+        ]);
+        $bread = GroceryReceiptItem::factory()->for($receipt, 'receipt')->create([
+            'line_no' => 2,
+            'name' => 'Bread',
+        ]);
+
+        Livewire::test(ItemsRelationManager::class, [
+            'ownerRecord' => $receipt,
+            'pageClass' => ViewGroceryReceipt::class,
+        ])
+            ->assertCanSeeTableRecords([$milk, $bread])
+            ->assertSee(ArticlePriceResource::getUrl('view', ['record' => $milk]), false)
+            ->assertSee(ArticlePriceResource::getUrl('view', ['record' => $bread]), false);
+    }
+
+    public function test_category_articles_link_to_price_history_once_per_name(): void
+    {
+        $this->actingAs(User::factory()->admin()->create());
+
+        $dairy = ProductCategory::factory()->create(['name' => 'Dairy']);
+        $produce = ProductCategory::factory()->create(['name' => 'Produce']);
+
+        $older = GroceryReceipt::factory()->create(['purchased_at' => '2026-03-01 10:00:00']);
+        $newer = GroceryReceipt::factory()->create(['purchased_at' => '2026-06-01 10:00:00']);
+
+        $firstMilk = GroceryReceiptItem::factory()->for($older, 'receipt')->create([
+            'name' => 'Milk',
+            'product_category_id' => $dairy->id,
+        ]);
+        $laterMilk = GroceryReceiptItem::factory()->for($newer, 'receipt')->create([
+            'name' => 'Milk',
+            'product_category_id' => $dairy->id,
+        ]);
+        $apple = GroceryReceiptItem::factory()->for($newer, 'receipt')->create([
+            'name' => 'Apple',
+            'product_category_id' => $produce->id,
+        ]);
+
+        Livewire::test(EditProductCategory::class, ['record' => $dairy->getKey()])
+            ->assertOk()
+            ->assertSee('Articles');
+
+        Livewire::test(ArticlesRelationManager::class, [
+            'ownerRecord' => $dairy,
+            'pageClass' => EditProductCategory::class,
+        ])
+            ->assertCanSeeTableRecords([$firstMilk])
+            ->assertCanNotSeeTableRecords([$laterMilk, $apple])
+            ->assertSee('Milk')
+            ->assertSee('2')
+            ->assertDontSee('Apple')
+            ->assertSee(ArticlePriceResource::getUrl('view', ['record' => $firstMilk]), false)
+            ->assertDontSee(ArticlePriceResource::getUrl('view', ['record' => $laterMilk]), false)
+            ->searchTable('Milk')
+            ->assertCanSeeTableRecords([$firstMilk])
+            ->sortTable('times_bought');
     }
 
     public function test_sync_actions_are_admin_only_on_the_accounts_table(): void

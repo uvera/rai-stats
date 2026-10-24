@@ -3,6 +3,7 @@
 namespace App\Filament\Resources\GroceryReceipts\RelationManagers;
 
 use App\Enums\CategorySource;
+use App\Filament\Resources\ArticlePrices\ArticlePriceResource;
 use App\Models\GroceryReceiptItem;
 use App\Models\ProductCategory;
 use Filament\Actions\Action;
@@ -34,6 +35,7 @@ class ItemsRelationManager extends RelationManager
         return $table
             ->stackedOnMobile()
             ->defaultSort('line_no')
+            ->recordUrl(fn (GroceryReceiptItem $record): string => ArticlePriceResource::getUrl('view', ['record' => $record]))
             ->columns([
                 TextColumn::make('line_no')->label('#')->sortable()->visibleFrom('sm'),
                 TextColumn::make('name')->label('Item')->wrap()->searchable()->sortable(),
