@@ -477,4 +477,78 @@ class TransactionStatsTest extends TestCase
         $this->assertSame(1000, $split['RSD']['discretionary_cents']);
         $this->assertSame(75, $split['RSD']['bills_share']);
     }
+
+    public function test_top_place_share_and_uncategorized_share_are_per_currency(): void
+    {
+        $user = User::factory()->create();
+        $account = Account::factory()->for($user)->create();
+        $groceries = Category::factory()->create(['name' => 'Groceries']);
+
+        Transaction::factory()->for($account)->for($user)->create(['place' => 'Big', 'amount_cents' => -8000, 'category_id' => $groceries->id]);
+        Transaction::factory()->for($account)->for($user)->create(['place' => 'Small', 'amount_cents' => -2000, 'category_id' => null]);
+
+        $stats = $this->stats($user->id);
+
+        $this->assertSame(80, $stats->topPlaceShare(1)['RSD']['share']);
+        $this->assertSame(20, $stats->uncategorizedShareByCurrency()['RSD']['share']);
+        $this->assertSame(2000, $stats->uncategorizedShareByCurrency()['RSD']['uncategorized_cents']);
+    }
+
+    public function test_place_frequency_reports_charges_and_the_average_amount(): void
+    {
+        $user = User::factory()->create();
+        $account = Account::factory()->for($user)->create();
+
+        Transaction::factory()->for($account)->for($user)->create(['place' => 'Cafe', 'amount_cents' => -1000]);
+        Transaction::factory()->for($account)->for($user)->create(['place' => 'Cafe', 'amount_cents' => -3000]);
+
+        $row = $this->stats($user->id)->placeFrequencyQuery()->first();
+
+        $this->assertSame('Cafe', $row->place);
+        $this->assertSame(2, (int) $row->charges);
+        $this->assertSame(2000, (int) $row->average_cents);
+        $this->assertSame(4000, (int) $row->spend_cents);
+    }
+
+    public function test_unusual_charges_are_more_than_twice_the_other_visits(): void
+    {
+        $user = User::factory()->create();
+        $account = Account::factory()->for($user)->create();
+
+        foreach ([-1000, -1000, -10000] as $amount) {
+            Transaction::factory()->for($account)->for($user)->create([
+                'place' => 'Cafe', 'amount_cents' => $amount, 'date' => '2026-03-01',
+            ]);
+        }
+
+        Transaction::factory()->for($account)->for($user)->create([
+            'place' => 'Once', 'amount_cents' => -50000, 'date' => '2026-03-02',
+        ]);
+
+        $rows = $this->stats($user->id)->unusualChargesQuery()->get();
+
+        $this->assertCount(1, $rows);
+        $this->assertSame(-10000, $rows[0]->amount_cents);
+        $this->assertSame(1000, (int) $rows[0]->typical_cents);
+    }
+
+    public function test_first_time_places_ignore_a_place_seen_before_the_range(): void
+    {
+        $user = User::factory()->create();
+        $account = Account::factory()->for($user)->create();
+
+        Transaction::factory()->for($account)->for($user)->create(['place' => 'Old Shop', 'amount_cents' => -500, 'date' => '2025-06-01']);
+        Transaction::factory()->for($account)->for($user)->create(['place' => 'Old Shop', 'amount_cents' => -700, 'date' => '2026-01-15']);
+        Transaction::factory()->for($account)->for($user)->create(['place' => 'New Shop', 'amount_cents' => -900, 'date' => '2026-01-20']);
+
+        $rows = (new TransactionStats(
+            userId: $user->id,
+            from: CarbonImmutable::parse('2026-01-01'),
+            to: CarbonImmutable::parse('2026-01-31'),
+        ))->firstTimePlacesQuery()->get();
+
+        $this->assertCount(1, $rows);
+        $this->assertSame('New Shop', $rows[0]->place);
+        $this->assertSame(900, (int) $rows[0]->spend_cents);
+    }
 }

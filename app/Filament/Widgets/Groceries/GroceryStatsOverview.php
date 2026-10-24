@@ -56,7 +56,11 @@ class GroceryStatsOverview extends BaseWidget
                 ->color('warning'),
             Stat::make(HoverHint::text('Linked to transactions', StatHints::LINKED), $overview['linked_percentage'].'%')
                 ->icon(Heroicon::OutlinedLink),
+            Stat::make(HoverHint::text('Items per basket', StatHints::LINES_PER_BASKET), number_format($query->linesPerBasket(), 1))
+                ->icon(Heroicon::OutlinedQueueList),
             ...$this->cardShareStats($query->cardSpendShare()),
+            ...$this->uncategorizedStat($query->uncategorizedItemShare()),
+            ...$this->cashGapStats($query->cashGap()),
         ];
     }
 
@@ -74,6 +78,41 @@ class GroceryStatsOverview extends BaseWidget
             $stats[] = Stat::make(HoverHint::text("Groceries on card ({$currency})", StatHints::CARD_SHARE), $share['share'].'%')
                 ->description(number_format($share['linked_cents'] / 100, 2).' of '.number_format($share['expense_cents'] / 100, 2))
                 ->icon(Heroicon::OutlinedLink);
+        }
+
+        return $stats;
+    }
+
+    /**
+     * @param  array{uncategorized_cents: int, spend_cents: int, share: int}  $share
+     * @return array<int, Stat>
+     */
+    private function uncategorizedStat(array $share): array
+    {
+        if ($share['spend_cents'] === 0) {
+            return [];
+        }
+
+        return [
+            Stat::make(HoverHint::text('Uncategorized items', StatHints::UNCATEGORIZED_ITEMS), $share['share'].'%')
+                ->description(number_format($share['uncategorized_cents'] / 100, 2).' of '.number_format($share['spend_cents'] / 100, 2))
+                ->icon(Heroicon::OutlinedTag),
+        ];
+    }
+
+    /**
+     * @param  array<string, array{unlinked_cents: int, atm_cents: int}>  $gap
+     * @return array<int, Stat>
+     */
+    private function cashGapStats(array $gap): array
+    {
+        $stats = [];
+
+        foreach ($gap as $currency => $row) {
+            $stats[] = Stat::make(HoverHint::text("Unlinked receipts ({$currency})", StatHints::CASH_GAP), number_format($row['unlinked_cents'] / 100, 2))
+                ->description('ATM withdrawals '.number_format($row['atm_cents'] / 100, 2))
+                ->icon(Heroicon::OutlinedBanknotes)
+                ->color('warning');
         }
 
         return $stats;

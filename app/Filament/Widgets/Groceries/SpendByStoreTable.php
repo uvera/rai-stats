@@ -41,6 +41,11 @@ class SpendByStoreTable extends TableWidget
                     ->formatStateUsing(fn ($state) => number_format(((int) $state) / 100, 2))
                     ->alignEnd()
                     ->sortable(),
+                TextColumn::make('share')
+                    ->label('Share')
+                    ->formatStateUsing(fn ($state) => ((int) $state).'%')
+                    ->alignEnd()
+                    ->sortable(),
             ])
             ->defaultSort('spend_cents', 'desc');
     }

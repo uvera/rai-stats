@@ -38,7 +38,7 @@ class ProductCategorySpendChart extends ChartWidget
                     '#64748b',
                 ],
             ]],
-            'labels' => array_map(fn (array $r) => $r['category_name'], $rows),
+            'labels' => array_map(fn (array $r) => $r['category_name'].' · '.$r['share'].'%', $rows),
         ];
     }
 }

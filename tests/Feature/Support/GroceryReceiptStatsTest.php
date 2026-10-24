@@ -3,6 +3,7 @@
 namespace Tests\Feature\Support;
 
 use App\Enums\ReceiptProvider;
+use App\Enums\TransactionType;
 use App\Filament\Pages\FamilyStats;
 use App\Filament\Pages\MyStats;
 use App\Models\Account;
@@ -238,5 +239,120 @@ class GroceryReceiptStatsTest extends TestCase
         $this->assertSame(40, $share['RSD']['share']);
         $this->assertSame(0, $share['EUR']['linked_cents']);
         $this->assertSame(0, $share['EUR']['share']);
+    }
+
+    public function test_lines_per_basket_and_uncategorized_item_share(): void
+    {
+        $receipt = GroceryReceipt::factory()->create(['purchased_at' => '2026-04-01', 'total_cents' => 30000]);
+        GroceryReceiptItem::factory()->for($receipt, 'receipt')->create(['total_cents' => 20000, 'product_category_id' => null]);
+        GroceryReceiptItem::factory()->for($receipt, 'receipt')->create([
+            'total_cents' => 10000,
+            'product_category_id' => ProductCategory::factory()->create()->id,
+        ]);
+
+        $stats = $this->stats();
+
+        $this->assertSame(2.0, $stats->linesPerBasket());
+        $this->assertSame(67, $stats->uncategorizedItemShare()['share']);
+    }
+
+    public function test_vat_by_rate_splits_the_tax(): void
+    {
+        $receipt = GroceryReceipt::factory()->create(['purchased_at' => '2026-04-01']);
+        GroceryReceiptItem::factory()->for($receipt, 'receipt')->create(['total_cents' => 11000, 'vat_rate' => 10]);
+        GroceryReceiptItem::factory()->for($receipt, 'receipt')->create(['total_cents' => 12000, 'vat_rate' => 20]);
+
+        $rows = collect($this->stats()->vatByRate())->keyBy('rate');
+
+        $this->assertSame(1000, $rows['10%']['vat_cents']);
+        $this->assertSame(2000, $rows['20%']['vat_cents']);
+    }
+
+    public function test_cash_gap_pairs_unlinked_receipts_with_atm_withdrawals(): void
+    {
+        $user = User::factory()->create();
+        $account = Account::factory()->for($user)->create();
+
+        Transaction::factory()->for($account)->for($user)->create([
+            'place' => 'bankomat', 'description' => 'ATM withdrawal', 'type' => TransactionType::Other,
+            'amount_cents' => -20000, 'date' => '2026-06-01',
+        ]);
+        GroceryReceipt::factory()->create(['purchased_at' => '2026-06-02', 'total_cents' => 60000, 'transaction_id' => null]);
+        GroceryReceipt::factory()->create([
+            'purchased_at' => '2026-06-03', 'total_cents' => 40000,
+            'transaction_id' => Transaction::factory()->create(['date' => '2026-06-03', 'amount_cents' => -40000])->id,
+        ]);
+
+        $gap = (new GroceryReceiptStats(
+            from: CarbonImmutable::parse('2026-06-01'),
+            to: CarbonImmutable::parse('2026-06-30'),
+        ))->cashGap();
+
+        $this->assertSame(60000, $gap['RSD']['unlinked_cents']);
+        $this->assertSame(20000, $gap['RSD']['atm_cents']);
+    }
+
+    public function test_prices_that_moved_keep_a_name_whose_latest_price_is_above_average(): void
+    {
+        foreach ([10000, 10000, 30000] as $index => $price) {
+            $receipt = GroceryReceipt::factory()->create(['purchased_at' => '2026-05-0'.($index + 1)]);
+            GroceryReceiptItem::factory()->for($receipt, 'receipt')->create([
+                'name' => 'Milk', 'unit_price_cents' => $price, 'total_cents' => $price,
+            ]);
+        }
+
+        $flat = GroceryReceipt::factory()->create(['purchased_at' => '2026-05-10']);
+        foreach ([5000, 5000, 5000] as $price) {
+            GroceryReceiptItem::factory()->for($flat, 'receipt')->create([
+                'name' => 'Bread', 'unit_price_cents' => $price, 'total_cents' => $price,
+            ]);
+        }
+
+        $rows = $this->stats()->pricesMovedQuery()->get()->keyBy('name');
+
+        $this->assertTrue($rows->has('Milk'));
+        $this->assertSame(30000, (int) $rows['Milk']->last_unit_price_cents);
+        $this->assertFalse($rows->has('Bread'));
+    }
+
+    public function test_unusual_baskets_are_more_than_twice_the_other_trips(): void
+    {
+        foreach ([10000, 10000, 100000] as $index => $total) {
+            GroceryReceipt::factory()->create([
+                'purchased_at' => '2026-04-0'.($index + 1),
+                'store_name' => 'Maxi 12',
+                'store_format' => 'MAXI',
+                'total_cents' => $total,
+            ]);
+        }
+
+        GroceryReceipt::factory()->create([
+            'purchased_at' => '2026-04-10', 'store_name' => 'Once', 'total_cents' => 500000,
+        ]);
+
+        $rows = $this->stats()->unusualBasketsQuery()->get();
+
+        $this->assertCount(1, $rows);
+        $this->assertSame(100000, $rows[0]->total_cents);
+        $this->assertSame(10000, (int) $rows[0]->typical_cents);
+    }
+
+    public function test_first_time_products_ignore_a_name_bought_before_the_range(): void
+    {
+        $earlier = GroceryReceipt::factory()->create(['purchased_at' => '2025-06-01']);
+        GroceryReceiptItem::factory()->for($earlier, 'receipt')->create(['name' => 'Bread', 'total_cents' => 1000]);
+
+        $now = GroceryReceipt::factory()->create(['purchased_at' => '2026-01-15']);
+        GroceryReceiptItem::factory()->for($now, 'receipt')->create(['name' => 'Bread', 'total_cents' => 1000]);
+        GroceryReceiptItem::factory()->for($now, 'receipt')->create(['name' => 'Milk', 'total_cents' => 2500]);
+
+        $rows = (new GroceryReceiptStats(
+            from: CarbonImmutable::parse('2026-01-01'),
+            to: CarbonImmutable::parse('2026-01-31'),
+        ))->firstTimeProductsQuery()->get();
+
+        $this->assertCount(1, $rows);
+        $this->assertSame('Milk', $rows[0]->name);
+        $this->assertSame(2500, (int) $rows[0]->spend_cents);
     }
 }

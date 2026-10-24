@@ -3,9 +3,11 @@
 namespace App\Filament\Pages;
 
 use App\Filament\Widgets\BillsVersusRestChart;
+use App\Filament\Widgets\FirstTimePlacesTable;
 use App\Filament\Widgets\IncomeExpenseChart;
 use App\Filament\Widgets\LargestTransactionsTable;
 use App\Filament\Widgets\LeaderboardTable;
+use App\Filament\Widgets\PlaceFrequencyTable;
 use App\Filament\Widgets\RecurringChargesTable;
 use App\Filament\Widgets\SavingsRateChart;
 use App\Filament\Widgets\SpendByCategoryChart;
@@ -13,6 +15,7 @@ use App\Filament\Widgets\SpendPerAccountTable;
 use App\Filament\Widgets\SpendPerPlaceOverTimeChart;
 use App\Filament\Widgets\StatsOverview;
 use App\Filament\Widgets\TopPlacesChart;
+use App\Filament\Widgets\UnusualChargesTable;
 use App\Filament\Widgets\WeekdayCardSpendChart;
 use App\Models\Account;
 use Filament\Forms\Components\DatePicker;
@@ -174,7 +177,10 @@ abstract class AbstractStatsPage extends Page
     {
         return [
             SpendPerAccountTable::class,
+            PlaceFrequencyTable::class,
             LargestTransactionsTable::class,
+            UnusualChargesTable::class,
+            FirstTimePlacesTable::class,
             RecurringChargesTable::class,
             ...($this->showLeaderboard() ? [LeaderboardTable::class] : []),
         ];

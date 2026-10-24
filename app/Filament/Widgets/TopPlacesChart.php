@@ -34,7 +34,7 @@ class TopPlacesChart extends ChartWidget
                 'data' => array_map(fn (array $p) => $p['spend_cents'] / 100, $places),
                 'backgroundColor' => '#f59e0b',
             ]],
-            'labels' => array_map(fn (array $p) => $p['place'], $places),
+            'labels' => array_map(fn (array $p) => $p['place'].' · '.$p['share'].'%', $places),
         ];
     }
 

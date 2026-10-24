@@ -32,6 +32,8 @@ class StatsOverview extends BaseWidget
             ...$this->statsPerCurrency('Average spend', $overview['average_spend_cents'], Heroicon::OutlinedCalculator, 'danger', StatHints::AVERAGE_SPEND),
             ...$this->statsPerCurrency('ATM / cash withdrawals', $overview['atm_withdrawal_cents'], Heroicon::OutlinedBanknotes, 'warning', StatHints::ATM),
             ...$this->savingsStats($query->savingsRateByCurrency()),
+            ...$this->shareStats('Top 5 places', $query->topPlaceShare(), StatHints::TOP_PLACE_SHARE, Heroicon::OutlinedMapPin),
+            ...$this->shareStats('Uncategorized', $query->uncategorizedShareByCurrency(), StatHints::UNCATEGORIZED_SPEND, Heroicon::OutlinedTag),
         ];
     }
 
@@ -170,6 +172,33 @@ class StatsOverview extends BaseWidget
 
         $increased = $current > $previous;
         $stat->descriptionColor(($increased === $increaseIsGood) ? 'success' : 'danger');
+    }
+
+    /**
+     * @param  array<string, array{share: int, spend_cents?: int, total_cents?: int, uncategorized_cents?: int}>  $shares
+     * @return array<int, Stat>
+     */
+    private function shareStats(string $label, array $shares, string $hint, Heroicon $icon): array
+    {
+        ksort($shares);
+
+        $stats = [];
+
+        foreach ($shares as $currency => $share) {
+            if (array_key_exists('uncategorized_cents', $share)) {
+                $part = $share['uncategorized_cents'];
+                $whole = $share['spend_cents'];
+            } else {
+                $part = $share['spend_cents'] ?? 0;
+                $whole = $share['total_cents'] ?? 0;
+            }
+
+            $stats[] = Stat::make(HoverHint::text("{$label} ({$currency})", $hint), $share['share'].'%')
+                ->description(number_format($part / 100, 2).' of '.number_format($whole / 100, 2))
+                ->icon($icon);
+        }
+
+        return $stats;
     }
 
     private function label(string $label, ?string $hint = null): string|HtmlString

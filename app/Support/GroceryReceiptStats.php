@@ -27,8 +27,19 @@ readonly class GroceryReceiptStats
      */
     private function receipts(): Builder
     {
+        return $this->receiptsAnytime()
+            ->whereBetween('purchased_at', [$this->from->startOfDay(), $this->to->endOfDay()]);
+    }
+
+    /**
+     * Account and provider filters without the date range, so a product's
+     * first-ever purchase can sit outside the selected dates.
+     *
+     * @return Builder<GroceryReceipt>
+     */
+    private function receiptsAnytime(): Builder
+    {
         return GroceryReceipt::query()
-            ->whereBetween('purchased_at', [$this->from->startOfDay(), $this->to->endOfDay()])
             ->when($this->groceryAccountId !== null, fn (Builder $q) => $q->where('grocery_account_id', $this->groceryAccountId))
             ->when($this->provider !== null, fn (Builder $q) => $q->where('provider', $this->provider));
     }
@@ -43,11 +54,11 @@ readonly class GroceryReceiptStats
     }
 
     /**
-     * @return array<int, array{category_name: string, spend_cents: int, item_count: int}>
+     * @return array<int, array{category_name: string, spend_cents: int, item_count: int, share: int}>
      */
     public function productCategorySpend(): array
     {
-        return $this->items()
+        $rows = $this->items()
             ->leftJoin('product_categories', 'product_categories.id', '=', 'grocery_receipt_items.product_category_id')
             ->groupBy('grocery_receipt_items.product_category_id', 'product_categories.name')
             ->selectRaw("COALESCE(product_categories.name, 'Uncategorized') as category_name")
@@ -60,13 +71,25 @@ readonly class GroceryReceiptStats
                 'item_count' => (int) $row->item_count,
             ])
             ->all();
+
+        $total = array_sum(array_column($rows, 'spend_cents'));
+
+        return array_map(function (array $row) use ($total) {
+            $row['share'] = $this->shareOf($row['spend_cents'], $total);
+
+            return $row;
+        }, $rows);
     }
 
     /**
-     * @return array<int, array{name: string, spend_cents: int, times_bought: int}>
+     * Share is of every item in the range, not of the limited list.
+     *
+     * @return array<int, array{name: string, spend_cents: int, times_bought: int, share: int}>
      */
     public function topProducts(int $limit = 15): array
     {
+        $total = (int) $this->items()->sum('total_cents');
+
         return $this->items()
             ->groupBy('name')
             ->selectRaw('name, SUM(total_cents) as spend_cents, COUNT(*) as times_bought')
@@ -77,6 +100,7 @@ readonly class GroceryReceiptStats
                 'name' => $row->name,
                 'spend_cents' => (int) $row->spend_cents,
                 'times_bought' => (int) $row->times_bought,
+                'share' => $this->shareOf((int) $row->spend_cents, $total),
             ])
             ->all();
     }
@@ -245,11 +269,12 @@ readonly class GroceryReceiptStats
             ->selectRaw('store_format')
             ->selectRaw('COUNT(*) as receipts')
             ->selectRaw('COALESCE(SUM(total_cents), 0) as spend_cents')
-            ->selectRaw('COALESCE(ROUND(AVG(total_cents)), 0) as avg_basket_cents');
+            ->selectRaw('COALESCE(ROUND(AVG(total_cents)), 0) as avg_basket_cents')
+            ->selectRaw('COALESCE(ROUND(100.0 * SUM(total_cents) / NULLIF(SUM(SUM(total_cents)) OVER (), 0)), 0) as share');
     }
 
     /**
-     * @return array<int, array{store_name: string, store_format: string|null, receipts: int, spend_cents: int, avg_basket_cents: int}>
+     * @return array<int, array{store_name: string, store_format: string|null, receipts: int, spend_cents: int, avg_basket_cents: int, share: int}>
      */
     public function spendByStore(): array
     {
@@ -262,6 +287,7 @@ readonly class GroceryReceiptStats
                 'receipts' => (int) $row->receipts,
                 'spend_cents' => (int) $row->spend_cents,
                 'avg_basket_cents' => (int) $row->avg_basket_cents,
+                'share' => (int) $row->share,
             ])
             ->all();
     }
@@ -381,6 +407,193 @@ readonly class GroceryReceiptStats
     private function forRange(CarbonImmutable $from, CarbonImmutable $to): self
     {
         return new self($from, $to, $this->groceryAccountId, $this->provider);
+    }
+
+    /**
+     * Average number of lines on a receipt in this range.
+     */
+    public function linesPerBasket(): float
+    {
+        $receipts = $this->receiptCount();
+
+        if ($receipts === 0) {
+            return 0.0;
+        }
+
+        return round($this->items()->count() / $receipts, 1);
+    }
+
+    /**
+     * @return array{uncategorized_cents: int, spend_cents: int, share: int}
+     */
+    public function uncategorizedItemShare(): array
+    {
+        $row = $this->items()
+            ->selectRaw('COALESCE(SUM(total_cents), 0) as spend_cents')
+            ->selectRaw('COALESCE(SUM(CASE WHEN product_category_id IS NULL THEN total_cents ELSE 0 END), 0) as uncategorized_cents')
+            ->first();
+
+        $spend = (int) $row->spend_cents;
+        $uncategorized = (int) $row->uncategorized_cents;
+
+        return [
+            'uncategorized_cents' => $uncategorized,
+            'spend_cents' => $spend,
+            'share' => $this->shareOf($uncategorized, $spend),
+        ];
+    }
+
+    /**
+     * Receipt totals with no matched bank payment, per currency.
+     *
+     * @return array<string, int>
+     */
+    public function unlinkedTotalsByCurrency(): array
+    {
+        return $this->receipts()
+            ->whereNull('transaction_id')
+            ->groupBy('currency_code')
+            ->orderBy('currency_code')
+            ->selectRaw('currency_code, COALESCE(SUM(total_cents), 0) as total_cents')
+            ->pluck('total_cents', 'currency_code')
+            ->map(fn ($cents) => (int) $cents)
+            ->all();
+    }
+
+    /**
+     * Unlinked receipt totals beside household ATM withdrawals on the same
+     * dates. Grocery filters apply to the receipts only.
+     *
+     * @return array<string, array{unlinked_cents: int, atm_cents: int}>
+     */
+    public function cashGap(): array
+    {
+        $unlinked = $this->unlinkedTotalsByCurrency();
+        $atm = (new TransactionStats(
+            userId: null,
+            from: $this->from,
+            to: $this->to,
+        ))->atmWithdrawalTotalsByCurrency();
+
+        $gap = [];
+
+        foreach (collect(array_keys($unlinked))->merge(array_keys($atm))->unique()->sort() as $currency) {
+            $unlinkedCents = $unlinked[$currency] ?? 0;
+            $atmCents = $atm[$currency] ?? 0;
+
+            if ($unlinkedCents === 0 && $atmCents === 0) {
+                continue;
+            }
+
+            $gap[$currency] = [
+                'unlinked_cents' => $unlinkedCents,
+                'atm_cents' => $atmCents,
+            ];
+        }
+
+        return $gap;
+    }
+
+    /**
+     * @return array<int, array{rate: string, spend_cents: int, vat_cents: int}>
+     */
+    public function vatByRate(): array
+    {
+        return $this->items()
+            ->groupBy('vat_rate')
+            ->selectRaw('vat_rate')
+            ->selectRaw('COALESCE(SUM(total_cents), 0) as spend_cents')
+            ->selectRaw('COALESCE(SUM(CASE WHEN vat_rate IS NULL THEN 0 ELSE ROUND(total_cents - total_cents / (1 + vat_rate / 100.0)) END), 0) as vat_cents')
+            ->orderByRaw('vat_rate NULLS LAST')
+            ->get()
+            ->map(fn ($row) => [
+                'rate' => $row->vat_rate === null
+                    ? 'No rate'
+                    : rtrim(rtrim(number_format((float) $row->vat_rate, 2), '0'), '.').'%',
+                'spend_cents' => (int) $row->spend_cents,
+                'vat_cents' => (int) $row->vat_cents,
+            ])
+            ->all();
+    }
+
+    /**
+     * Names bought at least three times in this range whose latest unit
+     * price sits above the average of those purchases.
+     *
+     * @return Builder<GroceryReceiptItem>
+     */
+    public function pricesMovedQuery(int $minTimes = 3): Builder
+    {
+        $lastPrice = '(ARRAY_AGG(grocery_receipt_items.unit_price_cents ORDER BY grocery_receipts.purchased_at DESC, grocery_receipt_items.id DESC))[1]';
+
+        return $this->items()
+            ->join('grocery_receipts', 'grocery_receipts.id', '=', 'grocery_receipt_items.grocery_receipt_id')
+            ->groupBy('grocery_receipt_items.name')
+            ->selectRaw('MIN(grocery_receipt_items.id) as id')
+            ->selectRaw('grocery_receipt_items.name as name')
+            ->selectRaw('COUNT(*) as times_bought')
+            ->selectRaw('ROUND(AVG(grocery_receipt_items.unit_price_cents)) as avg_unit_price_cents')
+            ->selectRaw('MIN(grocery_receipt_items.unit_price_cents) as min_unit_price_cents')
+            ->selectRaw("{$lastPrice} as last_unit_price_cents")
+            ->selectRaw("ROUND(100.0 * ({$lastPrice} - AVG(grocery_receipt_items.unit_price_cents)) / NULLIF(AVG(grocery_receipt_items.unit_price_cents), 0), 1) as raise_percent")
+            ->havingRaw('COUNT(*) >= ?', [$minTimes])
+            ->havingRaw("{$lastPrice} > AVG(grocery_receipt_items.unit_price_cents)");
+    }
+
+    /**
+     * A basket more than twice the average of the other baskets at that
+     * store. Fewer than three trips and the store is skipped.
+     *
+     * @return Builder<GroceryReceipt>
+     */
+    public function unusualBasketsQuery(int $minVisits = 3, float $multiple = 2): Builder
+    {
+        $stats = $this->receipts()
+            ->groupByRaw("COALESCE(store_name, 'Unknown store'), currency_code")
+            ->selectRaw("COALESCE(store_name, 'Unknown store') as store_name")
+            ->selectRaw('currency_code')
+            ->selectRaw('COUNT(*) as visits')
+            ->selectRaw('SUM(total_cents) as spend_cents');
+
+        $others = '((store_stats.spend_cents - grocery_receipts.total_cents) / NULLIF(store_stats.visits - 1, 0))';
+
+        return $this->receipts()
+            ->select('grocery_receipts.*')
+            ->selectRaw("ROUND({$others}) as typical_cents")
+            ->joinSub($stats, 'store_stats', function ($join): void {
+                $join->whereRaw("store_stats.store_name = COALESCE(grocery_receipts.store_name, 'Unknown store')")
+                    ->whereColumn('store_stats.currency_code', 'grocery_receipts.currency_code');
+            })
+            ->where('store_stats.visits', '>=', $minVisits)
+            ->whereRaw("grocery_receipts.total_cents > ? * {$others}", [$multiple]);
+    }
+
+    /**
+     * Products whose first purchase, including dates outside this range,
+     * still falls inside it.
+     *
+     * @return Builder<GroceryReceiptItem>
+     */
+    public function firstTimeProductsQuery(): Builder
+    {
+        $from = $this->from->startOfDay();
+        $to = $this->to->endOfDay();
+
+        return GroceryReceiptItem::query()
+            ->join('grocery_receipts', 'grocery_receipts.id', '=', 'grocery_receipt_items.grocery_receipt_id')
+            ->whereIn('grocery_receipts.id', $this->receiptsAnytime()->select('id'))
+            ->groupBy('grocery_receipt_items.name')
+            ->selectRaw('MIN(grocery_receipt_items.id) as id')
+            ->selectRaw('grocery_receipt_items.name as name')
+            ->selectRaw('MIN(grocery_receipts.purchased_at) as first_purchased_at')
+            ->selectRaw('COALESCE(SUM(CASE WHEN grocery_receipts.purchased_at BETWEEN ? AND ? THEN grocery_receipt_items.total_cents ELSE 0 END), 0) as spend_cents', [$from, $to])
+            ->selectRaw('COALESCE(SUM(CASE WHEN grocery_receipts.purchased_at BETWEEN ? AND ? THEN 1 ELSE 0 END), 0) as times_bought', [$from, $to])
+            ->havingRaw('MIN(grocery_receipts.purchased_at) BETWEEN ? AND ?', [$from, $to]);
+    }
+
+    private function shareOf(int $part, int $total): int
+    {
+        return $total === 0 ? 0 : (int) round($part / $total * 100);
     }
 
     private function monthsSpanned(): int

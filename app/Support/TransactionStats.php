@@ -37,9 +37,19 @@ readonly class TransactionStats
         // Columns qualified with the table name throughout this class:
         // several methods join "accounts", which also has a user_id column,
         // so an unqualified "user_id" is ambiguous once that join is added.
+        return $this->scopedTransactions(dated: true);
+    }
+
+    /**
+     * Same user and account scope as the stats page. $dated restricts the
+     * rows to the selected range; first-time places need the undated form
+     * so an older visit still counts as history.
+     */
+    private function scopedTransactions(bool $dated): Builder
+    {
         return Transaction::query()
             ->excludingReserved()
-            ->whereBetween('transactions.date', [$this->from->startOfDay(), $this->to->endOfDay()])
+            ->when($dated, fn (Builder $q) => $q->whereBetween('transactions.date', [$this->from->startOfDay(), $this->to->endOfDay()]))
             ->when($this->userId !== null, fn (Builder $q) => $q->where('transactions.user_id', $this->userId))
             ->when(filled($this->accountIds), fn (Builder $q) => $q->whereIn('transactions.account_id', $this->accountIds));
     }
@@ -198,18 +208,30 @@ readonly class TransactionStats
     }
 
     /**
-     * @return array<int, array{place: string, spend_cents: int, transaction_count: int}>
+     * Share is of every expense in the range, not of the limited list, so
+     * the top 10 can add up to less than 100.
+     *
+     * @return array<int, array{place: string, spend_cents: int, transaction_count: int, average_cents: int, share: int}>
      */
     public function topPlaces(int $limit = 10): array
     {
+        $total = (int) $this->baseQuery()->where('transactions.amount_cents', '<', 0)->sum(DB::raw('-transactions.amount_cents'));
+
         return $this->baseQuery()
-            ->where('amount_cents', '<', 0)
+            ->where('transactions.amount_cents', '<', 0)
             ->groupBy('place')
             ->selectRaw('place, SUM(-amount_cents) as spend_cents, COUNT(*) as transaction_count')
             ->orderByDesc('spend_cents')
             ->limit($limit)
             ->get()
-            ->map(fn ($row) => $this->rowToIntArray($row))
+            ->map(function ($row) use ($total) {
+                $array = $this->rowToIntArray($row);
+                $count = $array['transaction_count'];
+                $array['average_cents'] = $count === 0 ? 0 : (int) round($array['spend_cents'] / $count);
+                $array['share'] = $this->shareOf($array['spend_cents'], $total);
+
+                return $array;
+            })
             ->all();
     }
 
@@ -217,11 +239,11 @@ readonly class TransactionStats
      * Grouped by category, with a left join so uncategorized spend still
      * appears as its own "Uncategorized" bucket instead of disappearing.
      *
-     * @return array<int, array{category_id: int|null, category_name: string, spend_cents: int, transaction_count: int}>
+     * @return array<int, array{category_id: int|null, category_name: string, spend_cents: int, transaction_count: int, share: int}>
      */
     public function spendByCategory(): array
     {
-        return $this->baseQuery()
+        $rows = $this->baseQuery()
             ->leftJoin('categories', 'categories.id', '=', 'transactions.category_id')
             ->where('transactions.amount_cents', '<', 0)
             ->groupBy('transactions.category_id', 'categories.name')
@@ -231,6 +253,14 @@ readonly class TransactionStats
             ->get()
             ->map(fn ($row) => $this->rowToIntArray($row))
             ->all();
+
+        $total = array_sum(array_column($rows, 'spend_cents'));
+
+        return array_map(function (array $row) use ($total) {
+            $row['share'] = $this->shareOf($row['spend_cents'], $total);
+
+            return $row;
+        }, $rows);
     }
 
     /**
@@ -695,6 +725,161 @@ readonly class TransactionStats
                 ],
             ])
             ->all();
+    }
+
+    /**
+     * How much of each currency sits in the places you paid the most.
+     *
+     * @return array<string, array{share: int, spend_cents: int, total_cents: int}>
+     */
+    public function topPlaceShare(int $limit = 5): array
+    {
+        $rows = $this->baseQuery()
+            ->where('transactions.amount_cents', '<', 0)
+            ->groupBy('transactions.currency_code', 'transactions.place')
+            ->selectRaw('transactions.currency_code as currency_code')
+            ->selectRaw('SUM(-transactions.amount_cents) as spend_cents')
+            ->get();
+
+        $byCurrency = [];
+
+        foreach ($rows as $row) {
+            $byCurrency[$row->currency_code][] = (int) $row->spend_cents;
+        }
+
+        $shares = [];
+
+        foreach ($byCurrency as $currency => $spends) {
+            rsort($spends);
+            $total = array_sum($spends);
+
+            if ($total === 0) {
+                continue;
+            }
+
+            $top = array_sum(array_slice($spends, 0, $limit));
+            $shares[$currency] = [
+                'share' => $this->shareOf($top, $total),
+                'spend_cents' => $top,
+                'total_cents' => $total,
+            ];
+        }
+
+        ksort($shares);
+
+        return $shares;
+    }
+
+    /**
+     * Share of expenses that still have no category, per currency.
+     *
+     * @return array<string, array{uncategorized_cents: int, spend_cents: int, share: int}>
+     */
+    public function uncategorizedShareByCurrency(): array
+    {
+        $rows = $this->baseQuery()
+            ->where('transactions.amount_cents', '<', 0)
+            ->groupBy('transactions.currency_code')
+            ->orderBy('transactions.currency_code')
+            ->selectRaw('transactions.currency_code as currency_code')
+            ->selectRaw('COALESCE(SUM(-transactions.amount_cents), 0) as spend_cents')
+            ->selectRaw('COALESCE(SUM(CASE WHEN transactions.category_id IS NULL THEN -transactions.amount_cents ELSE 0 END), 0) as uncategorized_cents')
+            ->get();
+
+        $shares = [];
+
+        foreach ($rows as $row) {
+            $spend = (int) $row->spend_cents;
+
+            if ($spend === 0) {
+                continue;
+            }
+
+            $uncategorized = (int) $row->uncategorized_cents;
+            $shares[$row->currency_code] = [
+                'uncategorized_cents' => $uncategorized,
+                'spend_cents' => $spend,
+                'share' => $this->shareOf($uncategorized, $spend),
+            ];
+        }
+
+        return $shares;
+    }
+
+    /**
+     * Charges and the average amount at each place. One row per place and
+     * currency so a dinar average is never mixed with a euro average.
+     *
+     * @return Builder<Transaction>
+     */
+    public function placeFrequencyQuery(): Builder
+    {
+        return $this->baseQuery()
+            ->where('transactions.amount_cents', '<', 0)
+            ->groupBy('transactions.place', 'transactions.currency_code')
+            ->selectRaw('MIN(transactions.id) as id')
+            ->selectRaw('transactions.place as place')
+            ->selectRaw('transactions.currency_code as currency_code')
+            ->selectRaw('COUNT(*) as charges')
+            ->selectRaw('COALESCE(SUM(-transactions.amount_cents), 0) as spend_cents')
+            ->selectRaw('COALESCE(ROUND(AVG(-transactions.amount_cents)), 0) as average_cents');
+    }
+
+    /**
+     * A charge more than twice the average of the other charges at that
+     * place and currency. Fewer than three charges and the place is skipped,
+     * so a first visit is not an outlier.
+     *
+     * @return Builder<Transaction>
+     */
+    public function unusualChargesQuery(int $minVisits = 3, float $multiple = 2): Builder
+    {
+        $stats = $this->baseQuery()
+            ->where('transactions.amount_cents', '<', 0)
+            ->groupBy('transactions.place', 'transactions.currency_code')
+            ->selectRaw('transactions.place as place')
+            ->selectRaw('transactions.currency_code as currency_code')
+            ->selectRaw('COUNT(*) as visits')
+            ->selectRaw('SUM(-transactions.amount_cents) as spend_cents');
+
+        $others = '((place_stats.spend_cents + transactions.amount_cents) / NULLIF(place_stats.visits - 1, 0))';
+
+        return $this->baseQuery()
+            ->select('transactions.*')
+            ->selectRaw("ROUND({$others}) as typical_cents")
+            ->where('transactions.amount_cents', '<', 0)
+            ->joinSub($stats, 'place_stats', function ($join): void {
+                $join->on('place_stats.place', '=', 'transactions.place')
+                    ->on('place_stats.currency_code', '=', 'transactions.currency_code');
+            })
+            ->where('place_stats.visits', '>=', $minVisits)
+            ->whereRaw("(-transactions.amount_cents) > ? * {$others}", [$multiple]);
+    }
+
+    /**
+     * Places whose earliest transaction, looking past the selected range,
+     * still falls inside it. Spend is the expenses from this range only.
+     *
+     * @return Builder<Transaction>
+     */
+    public function firstTimePlacesQuery(): Builder
+    {
+        $from = $this->from->startOfDay();
+        $to = $this->to->endOfDay();
+
+        return $this->scopedTransactions(dated: false)
+            ->groupBy('transactions.place', 'transactions.currency_code')
+            ->selectRaw('MIN(transactions.id) as id')
+            ->selectRaw('transactions.place as place')
+            ->selectRaw('transactions.currency_code as currency_code')
+            ->selectRaw('MIN(transactions.date) as first_date')
+            ->selectRaw('COALESCE(SUM(CASE WHEN transactions.date BETWEEN ? AND ? AND transactions.amount_cents < 0 THEN -transactions.amount_cents ELSE 0 END), 0) as spend_cents', [$from, $to])
+            ->havingRaw('MIN(transactions.date) BETWEEN ? AND ?', [$from, $to]);
+    }
+
+    private function shareOf(int $part, int $total): int
+    {
+        return $total === 0 ? 0 : (int) round($part / $total * 100);
     }
 
     private function forRange(CarbonImmutable $from, CarbonImmutable $to): self

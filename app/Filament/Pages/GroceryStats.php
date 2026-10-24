@@ -4,11 +4,15 @@ namespace App\Filament\Pages;
 
 use App\Enums\ReceiptProvider;
 use App\Filament\Widgets\Groceries\BasketSizeOverTimeChart;
+use App\Filament\Widgets\Groceries\FirstTimeProductsTable;
 use App\Filament\Widgets\Groceries\GroceryStatsOverview;
+use App\Filament\Widgets\Groceries\PricesMovedTable;
 use App\Filament\Widgets\Groceries\ProductCategorySpendChart;
 use App\Filament\Widgets\Groceries\SpendByStoreTable;
 use App\Filament\Widgets\Groceries\StaplesTable;
 use App\Filament\Widgets\Groceries\TopProductsChart;
+use App\Filament\Widgets\Groceries\UnusualBasketsTable;
+use App\Filament\Widgets\Groceries\VatByRateChart;
 use App\Filament\Widgets\Groceries\WeekdaySpendChart;
 use App\Models\GroceryAccount;
 use BackedEnum;
@@ -100,6 +104,7 @@ class GroceryStats extends Page
             TopProductsChart::class,
             BasketSizeOverTimeChart::class,
             WeekdaySpendChart::class,
+            VatByRateChart::class,
         ];
     }
 
@@ -111,6 +116,9 @@ class GroceryStats extends Page
         return [
             SpendByStoreTable::class,
             StaplesTable::class,
+            PricesMovedTable::class,
+            UnusualBasketsTable::class,
+            FirstTimeProductsTable::class,
         ];
     }
 }

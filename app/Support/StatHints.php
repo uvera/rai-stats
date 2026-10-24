@@ -57,4 +57,28 @@ final class StatHints
     public const BASKET_OVER_TIME = 'Each month shows total spend and the average receipt.';
 
     public const WEEKDAY_GROCERY = 'Receipt totals by weekday, from Monday through Sunday.';
+
+    public const TOP_PLACE_SHARE = 'How much of this currency\'s spending sits in the five places you paid the most.';
+
+    public const UNCATEGORIZED_SPEND = 'Share of expenses that still have no category.';
+
+    public const PLACE_FREQUENCY = 'How many times you paid a place, next to the average amount. A place you visit often for a small amount is a different decision from one large bill.';
+
+    public const UNUSUAL_CHARGE = 'A payment more than twice the average of the other payments at that same place. The place needs at least three payments in this range, so a first visit is not flagged.';
+
+    public const FIRST_PLACE = 'Places whose earliest transaction in your history falls inside this range. Older visits outside the dates keep a place off this list.';
+
+    public const LINES_PER_BASKET = 'Average number of lines on a receipt in this range.';
+
+    public const UNCATEGORIZED_ITEMS = 'Share of item spend that has no product category.';
+
+    public const CASH_GAP = 'Receipts in this range with no matched bank payment, shown next to household ATM withdrawals on the same dates. When the two move together, those groceries were likely paid in cash.';
+
+    public const VAT_BY_RATE = 'Spend and the tax inside it, split by the rate printed on the line. Lines with no rate are their own group.';
+
+    public const PRICES_MOVED = 'Products bought at least three times in this range whose latest unit price is above the average of those purchases.';
+
+    public const UNUSUAL_BASKET = 'A basket more than twice the average of the other baskets at that store. The store needs at least three trips in this range, so a first visit is not flagged.';
+
+    public const FIRST_PRODUCT = 'Products whose first purchase falls inside this range. Earlier history outside the dates still counts, so a long-running staple stays off this list.';
 }

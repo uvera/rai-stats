@@ -34,7 +34,7 @@ class TopProductsChart extends ChartWidget
                 'data' => array_map(fn (array $r) => $r['spend_cents'] / 100, $rows),
                 'backgroundColor' => '#10b981',
             ]],
-            'labels' => array_map(fn (array $r) => $r['name'], $rows),
+            'labels' => array_map(fn (array $r) => $r['name'].' · '.$r['times_bought'].'× · '.$r['share'].'%', $rows),
         ];
     }
 
