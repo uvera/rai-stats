@@ -210,77 +210,9 @@ class MaxiClient
      */
     public function listPromotions(string $accessToken, string $deviceUuid, string $storeId): array
     {
-        $articles = $this->listTriweekly($accessToken, $deviceUuid, $storeId);
-
-        foreach ([
-            [PromotionSource::Weekly, 'GetAvailableWeeklyPromotion'],
-            [PromotionSource::Biweekly, 'GetAvailableBiWeeklyPromotion'],
-            [PromotionSource::PlusGratis, 'GetAvailablePlusGratisPromotion'],
-            [PromotionSource::MaxiBees, 'GetAvailableMaxiBeesPromotion'],
-            [PromotionSource::Directed, 'GetAvailableDirectedPromotionByUser'],
-        ] as [$source, $action]) {
-            $articles = [
-                ...$articles,
-                ...$this->tag($source, $this->articlesFrom($this->authorizedGet(
-                    $this->promotionPath($action, $storeId),
-                    $accessToken,
-                    $deviceUuid,
-                ))),
-            ];
-        }
-
-        return $articles;
-    }
-
-    /**
-     * @return list<array{source: PromotionSource, article: array<string, mixed>}>
-     */
-    private function listTriweekly(string $accessToken, string $deviceUuid, string $storeId): array
-    {
-        $collected = [];
-
-        for ($page = 0; $page < 50; $page++) {
-            $body = $this->authorizedGet(
-                '/prod/A/api/AppEndUser/GetAvailableTriWeeklyPromotionPaging'
-                    .'?parStoreId='.rawurlencode($storeId)
-                    .'&parSearch=&parArticleCategoryId=&parPage='.$page
-                    .'&parOrderByColumn=name&parOrderByDirection=asc&parIsIncludeBanner=undefined',
-                $accessToken,
-                $deviceUuid,
-            );
-            $this->assertPromotionStatus($body);
-
-            $data = is_array($body['Data'] ?? null) ? $body['Data'] : [];
-            $batch = is_array($data['Articles'] ?? null) ? $data['Articles'] : [];
-
-            if ($batch === []) {
-                break;
-            }
-
-            $collected = [...$collected, ...$this->tag(PromotionSource::Triweekly, $batch)];
-
-            $perPage = (int) ($data['RecordsPerPage'] ?? 20);
-            $total = $data['TotalRecords'] ?? null;
-
-            if ($perPage > 0 && count($batch) < $perPage) {
-                break;
-            }
-
-            if (is_numeric($total) && count($collected) >= (int) $total) {
-                break;
-            }
-        }
-
-        return $collected;
-    }
-
-    private function promotionPath(string $action, string $storeId): string
-    {
-        $query = $action === 'GetAvailableWeeklyPromotion' || $action === 'GetAvailableBiWeeklyPromotion'
-            ? 'parStoreId='.rawurlencode($storeId).'&parOrderByColumn=name&parOrderByDirection=asc&parSearch=&parArticleCategoryId='
-            : 'parStoreId='.rawurlencode($storeId).'&parSearch=&parArticleCategoryId=&parOrderByColumn=name&parOrderByDirection=asc';
-
-        return '/prod/A/api/AppEndUser/'.$action.'?'.$query;
+        return (new MaxiPromotions(
+            fn (string $path, string $token, string $uuid): array => $this->authorizedGet($path, $token, $uuid),
+        ))->listPromotions($accessToken, $deviceUuid, $storeId);
     }
 
     /**
@@ -303,82 +235,6 @@ class MaxiClient
         }
 
         return $this->decodeJson((string) $response->getBody());
-    }
-
-    /**
-     * @param  array<string, mixed>  $body
-     */
-    private function assertPromotionStatus(array $body): void
-    {
-        if (($body['Status'] ?? true) === false) {
-            throw new ReceiptException('Moj Maxi promotions could not be loaded.');
-        }
-    }
-
-    /**
-     * @param  array<string, mixed>  $body
-     * @return list<array<string, mixed>>
-     */
-    private function articlesFrom(array $body): array
-    {
-        $this->assertPromotionStatus($body);
-
-        $data = $body['Data'] ?? null;
-
-        if ($data === null) {
-            return [];
-        }
-
-        if (is_array($data) && isset($data['Articles']) && is_array($data['Articles'])) {
-            return array_values(array_filter($data['Articles'], 'is_array'));
-        }
-
-        if (! is_array($data) || ! array_is_list($data) || $data === []) {
-            return [];
-        }
-
-        if (isset($data[0]['Articles']) && is_array($data[0]['Articles'])) {
-            $articles = [];
-
-            foreach ($data as $group) {
-                if (! is_array($group)) {
-                    continue;
-                }
-
-                foreach ($group['Articles'] ?? [] as $article) {
-                    if (is_array($article)) {
-                        $articles[] = $article;
-                    }
-                }
-            }
-
-            return $articles;
-        }
-
-        if (isset($data[0]['ArticleId'])) {
-            return array_values(array_filter($data, 'is_array'));
-        }
-
-        return [];
-    }
-
-    /**
-     * @param  list<array<string, mixed>>  $articles
-     * @return list<array{source: PromotionSource, article: array<string, mixed>}>
-     */
-    private function tag(PromotionSource $source, array $articles): array
-    {
-        $tagged = [];
-
-        foreach ($articles as $article) {
-            if (! is_array($article)) {
-                continue;
-            }
-
-            $tagged[] = ['source' => $source, 'article' => $article];
-        }
-
-        return $tagged;
     }
 
     /**
