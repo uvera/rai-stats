@@ -86,4 +86,36 @@ class CompareAccountsTest extends TestCase
             ->assertSee('15.00')
             ->assertSee('3.00');
     }
+
+    public function test_chart_labels_include_the_person_when_account_names_match(): void
+    {
+        $ana = User::factory()->create(['name' => 'Ana']);
+        $boris = User::factory()->create(['name' => 'Boris']);
+        $accountA = Account::factory()->for($ana)->create(['description' => 'Current account']);
+        $accountB = Account::factory()->for($boris)->create(['description' => 'Current account']);
+
+        Transaction::factory()->for($accountA)->for($ana)->create([
+            'amount_cents' => -1500,
+            'date' => now(),
+        ]);
+        Transaction::factory()->for($accountB)->for($boris)->create([
+            'amount_cents' => -300,
+            'date' => now(),
+        ]);
+
+        $this->actingAs($ana);
+
+        Livewire::test(CompareSpendOverTimeChart::class, [
+            'pageFilters' => [
+                'accountA' => $accountA->id,
+                'accountB' => $accountB->id,
+                'from' => now()->startOfYear()->format('Y-m-d'),
+                'to' => now()->format('Y-m-d'),
+                'period' => 'month',
+            ],
+        ])
+            ->assertOk()
+            ->assertSee('Ana - Current account')
+            ->assertSee('Boris - Current account');
+    }
 }

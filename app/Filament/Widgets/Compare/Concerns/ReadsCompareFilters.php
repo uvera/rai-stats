@@ -27,6 +27,7 @@ trait ReadsCompareFilters
         }
 
         $accounts = Account::query()
+            ->with('user')
             ->whereIn('id', [(int) $accountAId, (int) $accountBId])
             ->get()
             ->keyBy('id');
@@ -52,5 +53,14 @@ trait ReadsCompareFilters
     protected function formatSpend(int $cents): string
     {
         return number_format($cents / 100, 2);
+    }
+
+    /**
+     * Two people can hold bank accounts with the same description, so the
+     * person is part of every label that names an account.
+     */
+    protected function accountLabel(Account $account): string
+    {
+        return "{$account->user->name} - {$account->description}";
     }
 }

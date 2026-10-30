@@ -48,12 +48,12 @@ class CompareSpendOverTimeChart extends ChartWidget
         return [
             'datasets' => [
                 [
-                    'label' => $comparison->accountA()->description,
+                    'label' => $this->accountLabel($comparison->accountA()),
                     'data' => array_map(fn (array $row): float => $row['spend_a_cents'] / 100, $rows),
                     'backgroundColor' => '#f59e0b',
                 ],
                 [
-                    'label' => $comparison->accountB()->description,
+                    'label' => $this->accountLabel($comparison->accountB()),
                     'data' => array_map(fn (array $row): float => $row['spend_b_cents'] / 100, $rows),
                     'backgroundColor' => '#3b82f6',
                 ],

@@ -36,8 +36,8 @@ class CompareSpendByCategoryTable extends TableWidget
         $columns = [
             TextColumn::make('category_name')
                 ->label('Category'),
-            $this->spendColumn('spend_a_cents', $comparison?->accountA()->description ?? 'Account A', $comparison?->accountA()->currency_code ?? ''),
-            $this->spendColumn('spend_b_cents', $comparison?->accountB()->description ?? 'Account B', $comparison?->accountB()->currency_code ?? ''),
+            $this->spendColumn('spend_a_cents', $comparison === null ? 'Account A' : $this->accountLabel($comparison->accountA()), $comparison?->accountA()->currency_code ?? ''),
+            $this->spendColumn('spend_b_cents', $comparison === null ? 'Account B' : $this->accountLabel($comparison->accountB()), $comparison?->accountB()->currency_code ?? ''),
         ];
 
         if ($comparison?->sameCurrency()) {

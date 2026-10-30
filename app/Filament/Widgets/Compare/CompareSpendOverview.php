@@ -24,8 +24,8 @@ class CompareSpendOverview extends BaseWidget
         $totals = $comparison->totals();
 
         $stats = [
-            $this->spendStat($comparison->accountA()->description, $totals['a']['spend_cents'], $totals['a']['currency_code']),
-            $this->spendStat($comparison->accountB()->description, $totals['b']['spend_cents'], $totals['b']['currency_code']),
+            $this->spendStat($this->accountLabel($comparison->accountA()), $totals['a']['spend_cents'], $totals['a']['currency_code']),
+            $this->spendStat($this->accountLabel($comparison->accountB()), $totals['b']['spend_cents'], $totals['b']['currency_code']),
         ];
 
         $difference = $totals['difference_cents'];
@@ -35,7 +35,7 @@ class CompareSpendOverview extends BaseWidget
                 'Difference ('.$totals['a']['currency_code'].')',
                 $this->formatSpend($difference),
             )
-                ->description($this->differenceDescription($comparison->accountA()->description, $comparison->accountB()->description, $difference))
+                ->description($this->differenceDescription($this->accountLabel($comparison->accountA()), $this->accountLabel($comparison->accountB()), $difference))
                 ->icon(Heroicon::OutlinedScale);
         }
 
