@@ -159,6 +159,8 @@ class MaxiClient
     /**
      * Downloads an eReceipt PDF. The URL carries its own opaque hash and
      * needs no auth, but we send the standard headers anyway for consistency.
+     * Any public HTTPS host is accepted — Moj Maxi moves the PDF host — but
+     * loopback, link-local, and private addresses are still refused.
      */
     public function downloadReceipt(string $pdfUrl, string $deviceUuid): string
     {
@@ -166,7 +168,7 @@ class MaxiClient
         $host = is_array($parts) ? strtolower((string) ($parts['host'] ?? '')) : '';
         $scheme = is_array($parts) ? strtolower((string) ($parts['scheme'] ?? '')) : '';
 
-        if ($scheme !== 'https' || $host !== 'mobileloyalty-prod.delhaize.rs' || isset($parts['user']) || isset($parts['pass'])) {
+        if ($scheme !== 'https' || $host === '' || isset($parts['user']) || isset($parts['pass']) || $this->hostIsPrivate($host)) {
             throw new ReceiptException('Refusing to download an eReceipt from an unexpected host.');
         }
 
@@ -235,6 +237,25 @@ class MaxiClient
         }
 
         return $this->decodeJson((string) $response->getBody());
+    }
+
+    private function hostIsPrivate(string $host): bool
+    {
+        $host = trim($host, '[]');
+
+        if (in_array($host, ['localhost', 'localhost.localdomain', 'metadata.google.internal'], true)) {
+            return true;
+        }
+
+        if (str_ends_with($host, '.local') || str_ends_with($host, '.localhost') || str_ends_with($host, '.internal')) {
+            return true;
+        }
+
+        if (filter_var($host, FILTER_VALIDATE_IP) === false) {
+            return false;
+        }
+
+        return filter_var($host, FILTER_VALIDATE_IP, FILTER_FLAG_NO_PRIV_RANGE | FILTER_FLAG_NO_RES_RANGE) === false;
     }
 
     /**

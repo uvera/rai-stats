@@ -151,12 +151,40 @@ class MaxiClientTest extends TestCase
         $this->assertSame('%PDF-1.4 fake', $client->downloadReceipt('https://mobileloyalty-prod.delhaize.rs/eReceipt/x', 'dev-uuid'));
     }
 
+    public function test_download_receipt_accepts_the_elmap_pdf_host(): void
+    {
+        $client = $this->client([new Response(200, ['Content-Type' => 'application/pdf'], '%PDF-1.4 fake')]);
+
+        $this->assertSame(
+            '%PDF-1.4 fake',
+            $client->downloadReceipt('https://wes02pdapa15385elmap.azurewebsites.net/eReceipt/x', 'dev-uuid'),
+        );
+    }
+
     public function test_download_receipt_refuses_a_url_outside_the_loyalty_host(): void
     {
         $client = $this->client([new Response(200, [], '%PDF-1.4 fake')]);
 
         $this->expectException(ReceiptException::class);
         $client->downloadReceipt('http://127.0.0.1/latest/meta-data', 'dev-uuid');
+    }
+
+    public function test_download_receipt_refuses_a_private_address(): void
+    {
+        $client = $this->client([new Response(200, [], '%PDF-1.4 fake')]);
+
+        $this->expectException(ReceiptException::class);
+        $client->downloadReceipt('https://169.254.169.254/latest/meta-data', 'dev-uuid');
+    }
+
+    public function test_download_receipt_accepts_an_unknown_host(): void
+    {
+        $client = $this->client([new Response(200, ['Content-Type' => 'application/pdf'], '%PDF-1.4 fake')]);
+
+        $this->assertSame(
+            '%PDF-1.4 fake',
+            $client->downloadReceipt('https://receipts.example.test/eReceipt/x', 'dev-uuid'),
+        );
     }
 
     public function test_login_error_does_not_include_the_response_body(): void
